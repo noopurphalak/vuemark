@@ -1,5 +1,5 @@
 {
-  "name": "vuemark",
+  "name": "mark-vue",
   "version": "0.1.0",
   "description": "Auto-generate Markdown documentation from Vue 3 SFCs",
   "license": "MIT",

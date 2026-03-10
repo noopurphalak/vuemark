@@ -12,7 +12,7 @@ Auto-generate Markdown documentation from Vue 3 SFCs. Zero configuration require
 ## Quick Start
 
 ```sh
-npx vuemark ./src/components/Button.vue
+npx compmark-vue ./src/components/Button.vue
 ```
 
 This parses the component and creates `Button.md` in your current directory.
@@ -67,11 +67,11 @@ vuemark generates:
 ## Programmatic API
 
 ```sh
-pnpm install vuemark
+pnpm install compmark-vue
 ```
 
 ```ts
-import { parseComponent, generateMarkdown } from "vuemark";
+import { parseComponent, generateMarkdown } from "compmark-vue";
 
 const doc = parseComponent("./src/components/Button.vue");
 const md = generateMarkdown(doc);
@@ -80,7 +80,7 @@ const md = generateMarkdown(doc);
 Or parse from a string:
 
 ```ts
-import { parseSFC, generateMarkdown } from "vuemark";
+import { parseSFC, generateMarkdown } from "compmark-vue";
 
 const doc = parseSFC(source, "Button.vue");
 const md = generateMarkdown(doc);

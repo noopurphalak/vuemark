@@ -52,7 +52,7 @@ describe("CLI", () => {
   it("exits 1 with usage on missing argument", () => {
     const { stderr, status } = tryRun("");
     expect(status).not.toBe(0);
-    expect(stderr).toContain("Usage: vuemark <path-to-component.vue>");
+    expect(stderr).toContain("Usage: compmark-vue <path-to-component.vue>");
   });
 
   it("exits 1 on non-.vue file", () => {

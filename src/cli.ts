@@ -8,7 +8,7 @@ import { generateMarkdown } from "./markdown.ts";
 const filePath = process.argv[2];
 
 if (!filePath) {
-  console.error("Usage: vuemark <path-to-component.vue>");
+  console.error("Usage: compmark-vue <path-to-component.vue>");
   process.exit(1);
 }
 

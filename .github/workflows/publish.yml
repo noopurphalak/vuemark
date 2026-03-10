@@ -32,4 +32,4 @@ jobs:
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - run: echo "Published vuemark@${{ steps.pkg.outputs.version }}"
+      - run: echo "Published compmark-vue@${{ steps.pkg.outputs.version }}"

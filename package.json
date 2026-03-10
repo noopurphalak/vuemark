@@ -1,6 +1,6 @@
 {
   "name": "compmark-vue",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Auto-generate Markdown documentation from Vue 3 SFCs",
   "license": "MIT",
   "repository": "noopurphalak/compmark-vue",

@@ -1,5 +1,5 @@
 import { parse, compileScript } from "@vue/compiler-sfc";
-import type { Statement, Expression, ObjectProperty } from "@babel/types";
+import type { Statement, Expression, ObjectProperty, TSTypeParameterInstantiation } from "@babel/types";
 import type { ComponentDoc, PropDoc, EmitDoc } from "./types.ts";
 
 export function parseSFC(source: string, filename: string): ComponentDoc {
@@ -28,9 +28,14 @@ export function parseSFC(source: string, filename: string): ComponentDoc {
 
   for (const stmt of ast) {
     const calls = extractDefineCalls(stmt);
-    for (const { callee, args, leadingComments } of calls) {
+    for (const { callee, args, leadingComments, typeParams, defaultsArg } of calls) {
       if (callee === "defineProps" && args[0]?.type === "ObjectExpression") {
         doc.props = extractProps(args[0], scriptSource);
+      } else if (
+        callee === "defineProps" &&
+        typeParams?.params[0]?.type === "TSTypeLiteral"
+      ) {
+        doc.props = extractTypeProps(typeParams.params[0], defaultsArg, scriptSource);
       } else if (callee === "defineEmits" && args[0]?.type === "ArrayExpression") {
         doc.emits = extractEmits(args[0], leadingComments);
       }
@@ -44,42 +49,162 @@ interface DefineCall {
   callee: string;
   args: Expression[];
   leadingComments: Array<{ type: string; value: string }>;
+  typeParams?: TSTypeParameterInstantiation;
+  defaultsArg?: Expression;
+}
+
+function processCallExpression(
+  callExpr: Extract<Expression, { type: "CallExpression" }>,
+  leadingComments: Array<{ type: string; value: string }>,
+): DefineCall {
+  // Handle withDefaults(defineProps<T>(), {...})
+  if (
+    callExpr.callee.type === "Identifier" &&
+    callExpr.callee.name === "withDefaults" &&
+    callExpr.arguments[0]?.type === "CallExpression" &&
+    callExpr.arguments[0].callee.type === "Identifier" &&
+    callExpr.arguments[0].callee.name === "defineProps"
+  ) {
+    const innerCall = callExpr.arguments[0];
+    return {
+      callee: "defineProps",
+      args: innerCall.arguments as Expression[],
+      leadingComments,
+      typeParams: innerCall.typeParameters as TSTypeParameterInstantiation | undefined,
+      defaultsArg: callExpr.arguments[1] as Expression | undefined,
+    };
+  }
+
+  return {
+    callee: callExpr.callee.type === "Identifier" ? callExpr.callee.name : "",
+    args: callExpr.arguments as Expression[],
+    leadingComments,
+    typeParams: callExpr.typeParameters as TSTypeParameterInstantiation | undefined,
+  };
 }
 
 function extractDefineCalls(stmt: Statement): DefineCall[] {
   const calls: DefineCall[] = [];
+  const comments = (stmt.leadingComments ?? []) as Array<{ type: string; value: string }>;
 
   if (
     stmt.type === "ExpressionStatement" &&
     stmt.expression.type === "CallExpression" &&
-    stmt.expression.callee.type === "Identifier"
+    (stmt.expression.callee.type === "Identifier")
   ) {
-    calls.push({
-      callee: stmt.expression.callee.name,
-      args: stmt.expression.arguments as Expression[],
-      leadingComments: (stmt.leadingComments ?? []) as Array<{
-        type: string;
-        value: string;
-      }>,
-    });
+    calls.push(processCallExpression(stmt.expression, comments));
   }
 
   if (stmt.type === "VariableDeclaration") {
     for (const decl of stmt.declarations) {
-      if (decl.init?.type === "CallExpression" && decl.init.callee.type === "Identifier") {
-        calls.push({
-          callee: decl.init.callee.name,
-          args: decl.init.arguments as Expression[],
-          leadingComments: (stmt.leadingComments ?? []) as Array<{
-            type: string;
-            value: string;
-          }>,
-        });
+      if (decl.init?.type === "CallExpression" && (decl.init.callee.type === "Identifier")) {
+        calls.push(processCallExpression(decl.init, comments));
       }
     }
   }
 
   return calls;
+}
+
+function extractTypeProps(
+  typeLiteral: { members: Array<any> },
+  defaultsArg: Expression | undefined,
+  source: string,
+): PropDoc[] {
+  const defaults = defaultsArg?.type === "ObjectExpression"
+    ? extractDefaultsMap(defaultsArg, source)
+    : new Map<string, string>();
+
+  const props: PropDoc[] = [];
+
+  for (const member of typeLiteral.members) {
+    if (member.type !== "TSPropertySignature") continue;
+
+    const name =
+      member.key.type === "Identifier"
+        ? member.key.name
+        : member.key.type === "StringLiteral"
+          ? member.key.value
+          : "";
+    if (!name) continue;
+
+    const type = member.typeAnnotation?.typeAnnotation
+      ? resolveTypeString(member.typeAnnotation.typeAnnotation)
+      : "unknown";
+
+    const description = extractJSDoc(
+      (member.leadingComments ?? []) as Array<{ type: string; value: string }>,
+    );
+
+    props.push({
+      name,
+      type,
+      required: !member.optional,
+      default: defaults.get(name),
+      description,
+    });
+  }
+
+  return props;
+}
+
+function resolveTypeString(node: any): string {
+  switch (node.type) {
+    case "TSStringKeyword":
+      return "string";
+    case "TSNumberKeyword":
+      return "number";
+    case "TSBooleanKeyword":
+      return "boolean";
+    case "TSObjectKeyword":
+      return "object";
+    case "TSAnyKeyword":
+      return "any";
+    case "TSUnionType":
+      return node.types.map((t: any) => resolveTypeString(t)).join(" | ");
+    case "TSIntersectionType":
+      return node.types.map((t: any) => resolveTypeString(t)).join(" & ");
+    case "TSLiteralType":
+      if (node.literal.type === "StringLiteral") return `'${node.literal.value}'`;
+      if (node.literal.type === "NumericLiteral") return String(node.literal.value);
+      if (node.literal.type === "BooleanLiteral") return String(node.literal.value);
+      return "unknown";
+    case "TSArrayType":
+      return `${resolveTypeString(node.elementType)}[]`;
+    case "TSTypeReference": {
+      const name = node.typeName?.type === "Identifier" ? node.typeName.name : "unknown";
+      if (node.typeParameters?.params?.length) {
+        const params = node.typeParameters.params.map((p: any) => resolveTypeString(p)).join(", ");
+        return `${name}<${params}>`;
+      }
+      return name;
+    }
+    case "TSFunctionType":
+      return "Function";
+    default:
+      return "unknown";
+  }
+}
+
+function extractDefaultsMap(
+  obj: Extract<Expression, { type: "ObjectExpression" }>,
+  source: string,
+): Map<string, string> {
+  const map = new Map<string, string>();
+
+  for (const prop of obj.properties) {
+    if (prop.type !== "ObjectProperty") continue;
+    const name =
+      prop.key.type === "Identifier"
+        ? prop.key.name
+        : prop.key.type === "StringLiteral"
+          ? prop.key.value
+          : "";
+    if (!name) continue;
+    map.set(name, stringifyDefault(prop.value as Expression, source));
+  }
+
+  return map;
 }
 
 function extractProps(

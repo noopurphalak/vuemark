@@ -149,4 +149,68 @@ describe("parseSFC", () => {
     const items = doc.props.find((p) => p.name === "items")!;
     expect(items.default).toBe("() => []");
   });
+
+  it("parses type-based defineProps", () => {
+    const source = loadFixture("TypeProps.vue");
+    const doc = parseSFC(source, "TypeProps.vue");
+
+    expect(doc.props).toHaveLength(5);
+
+    const theme = doc.props.find((p) => p.name === "theme")!;
+    expect(theme.type).toBe("'filled' | 'outline'");
+    expect(theme.required).toBe(false);
+
+    const disabled = doc.props.find((p) => p.name === "disabled")!;
+    expect(disabled.type).toBe("boolean");
+    expect(disabled.required).toBe(true);
+
+    const count = doc.props.find((p) => p.name === "count")!;
+    expect(count.type).toBe("number");
+    expect(count.required).toBe(false);
+
+    const classes = doc.props.find((p) => p.name === "classes")!;
+    expect(classes.type).toBe("string[]");
+  });
+
+  it("extracts JSDoc from type-based props", () => {
+    const source = loadFixture("TypeProps.vue");
+    const doc = parseSFC(source, "TypeProps.vue");
+
+    const theme = doc.props.find((p) => p.name === "theme")!;
+    expect(theme.description).toBe("The visual theme");
+
+    const disabled = doc.props.find((p) => p.name === "disabled")!;
+    expect(disabled.description).toBe("Whether the button is disabled");
+  });
+
+  it("parses withDefaults + type-based defineProps", () => {
+    const source = loadFixture("WithDefaults.vue");
+    const doc = parseSFC(source, "WithDefaults.vue");
+
+    expect(doc.props).toHaveLength(4);
+
+    const theme = doc.props.find((p) => p.name === "theme")!;
+    expect(theme.type).toBe("'filled' | 'outline'");
+    expect(theme.required).toBe(false);
+    expect(theme.default).toBe('"filled"');
+
+    const type = doc.props.find((p) => p.name === "type")!;
+    expect(type.default).toBe('"button"');
+
+    const disabled = doc.props.find((p) => p.name === "disabled")!;
+    expect(disabled.default).toBe("false");
+
+    const items = doc.props.find((p) => p.name === "items")!;
+    expect(items.default).toBe("() => ({})");
+  });
+
+  it("withDefaults coexists with defineEmits", () => {
+    const source = loadFixture("WithDefaults.vue");
+    const doc = parseSFC(source, "WithDefaults.vue");
+
+    expect(doc.props.length).toBeGreaterThan(0);
+    expect(doc.emits).toHaveLength(2);
+    expect(doc.emits[0]!.name).toBe("click");
+    expect(doc.emits[1]!.name).toBe("change");
+  });
 });

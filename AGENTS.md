@@ -7,7 +7,7 @@ Auto-generate Markdown documentation from Vue 3 SFCs.
 ## Status
 
 - **Version:** 0.1.0 (Phase 1 complete)
-- **Tests:** 24 passing (parser: 13, markdown: 6, CLI: 5)
+- **Tests:** 28 passing (parser: 17, markdown: 6, CLI: 5)
 - **Coverage:** 88% statements, 92% lines
 
 ## Architecture
@@ -29,11 +29,13 @@ src/
 - Output `.md` file via CLI: `compmark-vue <path-to-component.vue>`
 - Handles `const props = defineProps(...)` variable assignment pattern
 - Default value stringification (literals, arrow functions)
+- TypeScript generic `defineProps<T>()` with inline type literals
+- `withDefaults(defineProps<T>(), {...})` support
 
 ## Not yet implemented
 
+- `defineProps<Props>()` with imported/external interfaces (requires cross-file type resolution)
 - Glob/folder support
 - Watch mode
-- TypeScript generics / type-based props
 - Config file
 - Non-Markdown output formats

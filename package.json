@@ -24,7 +24,8 @@
     "prepack": "pnpm build",
     "release": "pnpm test && pnpm build && changelogen --release && npm publish && git push --follow-tags",
     "test": "pnpm lint && pnpm typecheck && vitest run --coverage",
-    "typecheck": "tsgo --noEmit --skipLibCheck"
+    "typecheck": "tsgo --noEmit --skipLibCheck",
+    "prepare": "husky"
   },
   "dependencies": {
     "@vue/compiler-sfc": "^3.5.0"
@@ -36,11 +37,19 @@
     "@vitest/coverage-v8": "latest",
     "automd": "latest",
     "changelogen": "latest",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.3",
     "obuild": "latest",
     "oxfmt": "latest",
     "oxlint": "latest",
     "typescript": "latest",
     "vitest": "latest"
   },
-  "packageManager": "pnpm@10.29.3"
+  "packageManager": "pnpm@10.29.3",
+  "lint-staged": {
+    "*.{ts,vue}": [
+      "oxlint --fix",
+      "oxfmt"
+    ]
+  }
 }

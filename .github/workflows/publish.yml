@@ -24,6 +24,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.PUBLISH_TOKEN }}
       - run: npm i -fg corepack && corepack enable
       - uses: actions/setup-node@v6
         with:
@@ -55,23 +57,13 @@ jobs:
           echo "Bumped version: ${CURRENT} → ${NEW_VERSION}"
       - name: Commit version bump to main
         if: ${{ !inputs.dry-run }}
-        env:
-          GH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
         run: |
           VERSION="${{ steps.bump.outputs.version }}"
-          BRANCH="version-bump/${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
           git add package.json
           git commit -m "Bump version: ${VERSION}"
-          git push origin "$BRANCH"
-          gh pr create \
-            --title "Bump version: ${VERSION}" \
-            --body "Automated version bump to \`${VERSION}\` after npm publish." \
-            --base main \
-            --head "$BRANCH"
-          gh pr merge "$BRANCH" --squash --delete-branch --auto
+          git push origin main
       - name: Rebuild with bumped version
         if: ${{ !inputs.dry-run }}
         run: pnpm build

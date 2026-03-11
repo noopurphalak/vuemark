@@ -280,6 +280,27 @@ describe("generateMarkdown", () => {
     expect(md).toContain("- `useMouse`");
   });
 
+  it("escapes pipe characters in union types", () => {
+    const doc: ComponentDoc = {
+      name: "Progress",
+      props: [
+        {
+          name: "state",
+          type: "'PENDING' | 'PROGRESS' | 'SUCCESS' | 'FAILURE'",
+          required: false,
+          default: '"PENDING"',
+          description: "-",
+        },
+      ],
+      emits: [],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain(
+      "| state | 'PENDING' \\| 'PROGRESS' \\| 'SUCCESS' \\| 'FAILURE' | No | `\"PENDING\"` | - |",
+    );
+  });
+
   it("renders @see annotation", () => {
     const doc: ComponentDoc = {
       name: "Button",

@@ -1,5 +1,9 @@
 import type { ComponentDoc } from "./types.ts";
 
+function esc(value: string): string {
+  return value.replaceAll("|", "\\|");
+}
+
 export function generateMarkdown(doc: ComponentDoc): string {
   const sections: string[] = [`# ${doc.name}`];
 
@@ -44,7 +48,7 @@ export function generateMarkdown(doc: ComponentDoc): string {
       }
 
       const req = p.required ? "Yes" : "No";
-      sections.push(`| ${p.name} | ${p.type} | ${req} | ${def} | ${desc} |`);
+      sections.push(`| ${esc(p.name)} | ${esc(p.type)} | ${req} | ${esc(def)} | ${esc(desc)} |`);
 
       if (p.example) {
         examples.push({ name: p.name, example: p.example });
@@ -67,7 +71,7 @@ export function generateMarkdown(doc: ComponentDoc): string {
       for (const e of doc.emits) {
         const desc = e.description || "-";
         const payload = e.payload || "-";
-        sections.push(`| ${e.name} | ${payload} | ${desc} |`);
+        sections.push(`| ${esc(e.name)} | ${esc(payload)} | ${esc(desc)} |`);
       }
     } else {
       sections.push("", "## Emits", "");
@@ -75,7 +79,7 @@ export function generateMarkdown(doc: ComponentDoc): string {
       sections.push("| --- | --- |");
       for (const e of doc.emits) {
         const desc = e.description || "-";
-        sections.push(`| ${e.name} | ${desc} |`);
+        sections.push(`| ${esc(e.name)} | ${esc(desc)} |`);
       }
     }
   }
@@ -88,7 +92,7 @@ export function generateMarkdown(doc: ComponentDoc): string {
     for (const s of doc.slots!) {
       const desc = s.description || "-";
       const bindings = s.bindings.length > 0 ? s.bindings.join(", ") : "-";
-      sections.push(`| ${s.name} | ${bindings} | ${desc} |`);
+      sections.push(`| ${esc(s.name)} | ${esc(bindings)} | ${esc(desc)} |`);
     }
   }
 
@@ -99,7 +103,7 @@ export function generateMarkdown(doc: ComponentDoc): string {
     sections.push("| --- | --- | --- |");
     for (const e of doc.exposes!) {
       const desc = e.description || "-";
-      sections.push(`| ${e.name} | ${e.type} | ${desc} |`);
+      sections.push(`| ${esc(e.name)} | ${esc(e.type)} | ${esc(desc)} |`);
     }
   }
 

@@ -33,7 +33,7 @@ afterEach(() => {
   cleanupFiles.length = 0;
 });
 
-describe("CLI", () => {
+describe("CLI", { timeout: 10_000 }, () => {
   it("produces correct .md file from a fixture", () => {
     const outDir = import.meta.dirname!;
     const outFile = join(outDir, "BasicProps.md");

@@ -77,8 +77,7 @@ jobs:
             --body "Automated version bump to \`${VERSION}\` after npm publish." \
             --base main \
             --head "$BRANCH"
-          gh pr review "$BRANCH" --approve
-          gh pr merge "$BRANCH" --auto --squash
+          gh pr merge "$BRANCH" --squash --admin
       - name: Read version from package.json (dry run)
         if: ${{ inputs.dry-run }}
         id: pkg-dry

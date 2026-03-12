@@ -10,9 +10,14 @@ export type {
   ExposeDoc,
   ComposableDoc,
   ComposableVariable,
+  OutputFormat,
+  RunSummary,
 } from "./types.ts";
 export { parseSFC } from "./parser.ts";
-export { generateMarkdown } from "./markdown.ts";
+export { generateMarkdown, adjustHeadingLevel } from "./markdown.ts";
+export { discoverFiles } from "./discovery.ts";
+export { processFiles } from "./runner.ts";
+export { resolveImportedPropsType } from "./type-resolver.ts";
 
 export function parseComponent(filePath: string) {
   const abs = resolve(filePath);

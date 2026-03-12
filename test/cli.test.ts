@@ -52,19 +52,19 @@ describe("CLI", { timeout: 10_000 }, () => {
   it("exits 1 with usage on missing argument", () => {
     const { stderr, status } = tryRun("");
     expect(status).not.toBe(0);
-    expect(stderr).toContain("Usage: compmark <path-to-component.vue>");
+    expect(stderr).toContain("No input files or directories specified");
   });
 
   it("exits 1 on non-.vue file", () => {
     const { stderr, status } = tryRun("foo.txt");
     expect(status).not.toBe(0);
-    expect(stderr).toContain("Expected a .vue file");
+    expect(stderr).toContain("No .vue files found");
   });
 
   it("exits 1 on nonexistent file", () => {
     const { stderr, status } = tryRun("nonexistent.vue");
     expect(status).not.toBe(0);
-    expect(stderr).toContain("File not found");
+    expect(stderr).toContain("No .vue files found");
   });
 
   it("names output file after component", () => {

@@ -15,6 +15,10 @@ export function generateMarkdown(doc: ComponentDoc): string {
     sections.push("", doc.description);
   }
 
+  if (doc.scriptSetup) {
+    sections.push("", "**Note:** Uses `<script setup>` syntax.");
+  }
+
   const hasProps = doc.props.length > 0;
   const hasEmits = doc.emits.length > 0;
   const hasSlots = (doc.slots?.length ?? 0) > 0;
@@ -147,4 +151,11 @@ export function generateMarkdown(doc: ComponentDoc): string {
   }
 
   return sections.join("\n") + "\n";
+}
+
+export function adjustHeadingLevel(md: string, increment: number): string {
+  return md.replace(/^(#{1,6})\s/gm, (_, hashes: string) => {
+    const newLevel = Math.min(hashes.length + increment, 6);
+    return "#".repeat(newLevel) + " ";
+  });
 }

@@ -11,15 +11,88 @@ Auto-generate Markdown documentation from Vue 3 SFCs. Zero configuration require
 
 ## Quick Start
 
+Document a single component:
+
 ```sh
 npx compmark-vue ./src/components/Button.vue
 ```
 
-This parses the component and creates `Button.md` in your current directory.
+Document an entire directory:
+
+```sh
+npx compmark-vue ./src/components --out ./docs/api
+```
+
+Add to your `package.json`:
+
+```json
+{
+  "scripts": {
+    "docs": "compmark ./src/components --out ./docs/api"
+  }
+}
+```
+
+## CLI
+
+```
+compmark <files/dirs/globs> [options]
+```
+
+| Option                | Description                     | Default |
+| --------------------- | ------------------------------- | ------- |
+| `--out <dir>`         | Output directory                | `.`     |
+| `--format <md\|json>` | Output format                   | `md`    |
+| `--join`              | Combine into a single file      |         |
+| `--ignore <patterns>` | Comma-separated ignore patterns |         |
+| `--watch`             | Watch for changes and rebuild   |         |
+| `--silent`            | Suppress non-error output       |         |
+
+### Examples
+
+```sh
+# Single file
+compmark Button.vue
+
+# Directory (recursive)
+compmark src/components --out docs/api
+
+# Glob pattern
+compmark "src/**/components/*.vue" --out docs
+
+# Monorepo
+compmark "packages/*/src/components" --out docs/api
+
+# Combined markdown with table of contents
+compmark src/components --out docs --join
+
+# JSON output
+compmark src/components --out docs/api --format json
+
+# JSON combined into single file
+compmark src/components --format json --join --out docs
+
+# Ignore patterns
+compmark src/components --ignore "internal,*.test"
+
+# Watch mode
+compmark src/components --out docs --watch
+
+# Multiple inputs
+compmark src/components src/layouts --out docs
+```
+
+The summary line shows what happened:
+
+```
+✓ 24 components documented, 2 skipped, 0 errors
+```
+
+Exit code is `1` when errors occur (except in watch mode).
 
 ## Features
 
-- [Props](#props) — runtime and TypeScript generic syntax
+- [Props](#props) — runtime and TypeScript generic syntax, including imported types
 - [Emits](#emits) — array, TypeScript property, and call signature syntax
 - [Slots](#slots) — `defineSlots` with typed bindings, template `<slot>` fallback
 - [Expose](#expose) — `defineExpose` with JSDoc descriptions
@@ -27,6 +100,7 @@ This parses the component and creates `Button.md` in your current directory.
 - [JSDoc tags](#jsdoc-tags) — `@deprecated`, `@since`, `@example`, `@see`, `@default`
 - [`@internal`](#internal-components) — exclude components from output
 - [Options API](#options-api) — `export default { props, emits }` support
+- [Output formats](#output-formats) — Markdown (individual or joined), JSON
 - Empty sections are skipped cleanly — no placeholder noise
 
 ## Examples
@@ -82,6 +156,29 @@ defineProps({
 });
 </script>
 ```
+
+#### Imported types
+
+`defineProps<ImportedType>()` with exported interfaces or type aliases is supported:
+
+```ts
+// types.ts
+export interface ButtonProps {
+  /** The label text */
+  label: string;
+  disabled?: boolean;
+}
+```
+
+```vue
+<script setup lang="ts">
+import type { ButtonProps } from "./types";
+
+defineProps<ButtonProps>();
+</script>
+```
+
+Interface `extends` is resolved (up to 5 levels deep). `withDefaults` works with imported types too.
 
 ### Emits
 
@@ -186,15 +283,18 @@ Output:
 
 ### Composables
 
-Any `useX()` calls in `<script setup>` are automatically detected:
+Any `useX()` calls in `<script setup>` are automatically detected. Variable bindings (simple assignment, object/array destructuring, rest elements) are extracted:
 
 ```vue
 <script setup lang="ts">
 import { useRouter } from "vue-router";
 import { useMouse } from "@vueuse/core";
+import { useAuth } from "./composables/useAuth";
 
 const router = useRouter();
 const { x, y } = useMouse();
+const { user, login, logout } = useAuth();
+useHead({ title: "My App" });
 </script>
 ```
 
@@ -203,9 +303,30 @@ Output:
 ```md
 ## Composables Used
 
-- `useRouter`
-- `useMouse`
+### `useRouter`
+
+**Returns:** `router`
+
+### `useMouse`
+
+**Returns:** `x`, `y`
+
+### `useAuth`
+
+_Source: `./composables/useAuth`_
+
+| Variable | Type                                        |
+| -------- | ------------------------------------------- |
+| user     | Ref<User>                                   |
+| login    | (credentials: Credentials) => Promise<void> |
+| logout   | () => void                                  |
+
+### `useHead`
+
+Called for side effects.
 ```
+
+For local imports (`./` or `@/` paths), types are automatically resolved from the composable source file — `ref()`, `computed()`, `reactive()`, function signatures, and literals are all inferred. Source attribution is shown for local imports only.
 
 ### JSDoc Tags
 
@@ -259,7 +380,8 @@ defineProps<{
 
 ```sh
 $ compmark InternalHelper.vue
-Skipped InternalHelper.vue (marked @internal)
+  Skipped InternalHelper.vue (marked @internal)
+✓ 0 components documented, 1 skipped, 0 errors
 ```
 
 ### Options API
@@ -303,6 +425,36 @@ Output:
 | update | -           |
 ```
 
+### Output Formats
+
+**Individual markdown** (default) — one `.md` file per component:
+
+```sh
+compmark src/components --out docs
+# Creates: docs/Button.md, docs/Dialog.md, ...
+```
+
+**Joined markdown** — single file with table of contents:
+
+```sh
+compmark src/components --out docs --join
+# Creates: docs/components.md
+```
+
+The joined file includes a generated timestamp, table of contents with anchor links, and all components with headings bumped one level.
+
+**JSON** — machine-readable output:
+
+```sh
+# Individual JSON files
+compmark src/components --out docs --format json
+# Creates: docs/Button.json, docs/Dialog.json, ...
+
+# Combined JSON
+compmark src/components --format json --join --out docs
+# Creates: docs/components.json with { generated, components: [...] }
+```
+
 ## Programmatic API
 
 ```sh
@@ -325,6 +477,16 @@ const doc = parseSFC(source, "Button.vue");
 const md = generateMarkdown(doc);
 ```
 
+Multi-file processing:
+
+```ts
+import { discoverFiles, processFiles } from "compmark-vue";
+
+const files = await discoverFiles(["src/components"], ["dist"]);
+const summary = processFiles(files, { silent: false });
+// summary.files, summary.documented, summary.skipped, summary.errors
+```
+
 ## Development
 
 <details>
@@ -332,7 +494,7 @@ const md = generateMarkdown(doc);
 <summary>local development</summary>
 
 - Clone this repository
-- Install latest LTS version of [Node.js](https://nodejs.org/en/)
+- Install latest LTS version of [Node.js](https://nodejs.org/en/) (>= 20)
 - Enable [Corepack](https://github.com/nodejs/corepack) using `corepack enable`
 - Install dependencies using `pnpm install`
 - Run interactive tests using `pnpm dev`

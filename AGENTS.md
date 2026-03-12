@@ -6,20 +6,25 @@ Auto-generate Markdown documentation from Vue 3 SFCs.
 
 ## Status
 
-- **Version:** 0.2.5
-- **Tests:** 74 passing (parser: 43, markdown: 22, CLI: 9)
-- **Coverage:** 70% statements, 75% lines (resolver.ts cross-file paths partially covered)
+- **Version:** 0.3.0
+- **Tests:** 103 passing (parser: 46, markdown: 22, CLI: 9, CLI-phase3: 13, discovery: 8, type-resolver: 5)
+- **Coverage:** 71% statements, 75% lines
 
 ## Architecture
 
 ```
 src/
-  types.ts      — PropDoc, EmitDoc, SlotDoc, ExposeDoc, ComposableDoc, ComposableVariable, ComponentDoc interfaces
-  parser.ts     — SFC parsing + AST extraction (core logic)
-  resolver.ts   — Cross-file import resolution + composable source type inference
-  markdown.ts   — Markdown table generation (props, emits, slots, exposed, composables)
-  index.ts      — Public library API (re-exports + parseComponent)
-  cli.ts        — CLI entry point (argv, file I/O, @internal skip)
+  types.ts          — PropDoc, EmitDoc, SlotDoc, ExposeDoc, ComposableDoc, ComposableVariable, ComponentDoc, OutputFormat, RunSummary interfaces
+  parser.ts         — SFC parsing + AST extraction (core logic)
+  resolver.ts       — Cross-file import resolution + composable source type inference
+  type-resolver.ts  — Resolve defineProps<ImportedType>() across files
+  markdown.ts       — Markdown table generation (props, emits, slots, exposed, composables) + adjustHeadingLevel
+  discovery.ts      — File discovery (single file, directory, glob → absolute paths via tinyglobby)
+  runner.ts         — Multi-file processing loop, error collection
+  output.ts         — Output modes (individual md, joined md, JSON)
+  watcher.ts        — Watch mode with fs.watch + debounce
+  index.ts          — Public library API (re-exports + parseComponent)
+  cli.ts            — CLI entry point (citty-based, orchestrates full pipeline)
 ```
 
 ## Phase 1 (v0.1.0) — Complete
@@ -51,19 +56,37 @@ src/
 - Options API array props and object emits (validation syntax)
 - Markdown output: Slots, Exposed, Composables sections; Payload column for emits; @deprecated/@since/@example/@see annotations
 
-## v0.2.1–0.2.5 — Bugfixes & docs
+## v0.2.1–0.2.6 — Bugfixes & docs
 
 - Fix template slot extraction for template-only components (no script content)
 - `defineSlots` now fully overrides template slots (pure fallback, no merge)
 - Escape pipe (`|`) characters in Markdown table cells (fixes broken tables for union types)
 - Comprehensive README rewrite with examples for all features
 - CLI test timeout increase for stability
+- Fix for detecting Composable returned variables
+
+## Phase 3 (v0.3.0) — Complete
+
+- **Folder/glob support**: `compmark src/components --out docs/api` documents entire directories
+- **File discovery** (`src/discovery.ts`): single files, directories, glob patterns via tinyglobby; always ignores node_modules
+- **Multi-file processing** (`src/runner.ts`): per-file error handling, @internal skip, continues on failures
+- **Output modes** (`src/output.ts`): individual `.md` (default), joined `components.md` with TOC (`--join`), JSON (`--format json`)
+- **Joined markdown**: heading level adjustment, generated timestamp, table of contents with anchor links
+- **JSON output**: individual `{name}.json` or wrapped `components.json` with `--join`
+- **Duplicate component names**: automatic numeric suffix (`Button.md`, `Button-2.md`)
+- **Watch mode** (`src/watcher.ts`): `--watch` flag, `fs.watch` recursive, 300ms debounce, SIGINT cleanup
+- **Imported type resolution** (`src/type-resolver.ts`): `defineProps<ImportedType>()` with exported interfaces, type aliases, `extends` (depth limit 5)
+- **CLI rewrite** (`src/cli.ts`): citty-based with `--out`, `--ignore`, `--join`, `--format`, `--watch`, `--silent`
+- **Summary line**: `✓ N components documented, N skipped, N errors`
+- **Exit codes**: 1 on errors (non-watch), 0 otherwise
+- **Backward compat**: `compmark MyButton.vue` still works (single file, output to CWD)
+- **Monorepo support**: `packages/*/src/**/*.vue` works natively as glob input
+- **Bin alias**: `compmark-vue` added so `npx compmark-vue` works
+- **Engine requirement**: `node >= 20` (for recursive `fs.watch`)
+- **Dependencies**: citty (CLI parser), tinyglobby (glob matching)
 
 ## Not yet implemented
 
-- `defineProps<Props>()` with imported/external interfaces (requires cross-file type resolution)
 - `defineModel` (Vue 3.4+)
-- Glob/folder support
-- Watch mode
 - Config file
-- Non-Markdown output formats
+- Watch mode debounce tuning

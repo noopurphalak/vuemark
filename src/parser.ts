@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { parse, compileScript } from "@vue/compiler-sfc";
 import type {
   Statement,
@@ -15,6 +16,7 @@ import type {
   ComposableVariable,
 } from "./types.ts";
 import { resolveImportPath, resolveComposableTypes } from "./resolver.ts";
+import { resolveImportedPropsType } from "./type-resolver.ts";
 
 // --- JSDoc parsing ---
 
@@ -77,7 +79,10 @@ export function parseSFC(source: string, filename: string, sfcDir?: string): Com
       .pop() ?? "Unknown";
   const doc: ComponentDoc = { name, props: [], emits: [] };
 
-  const { descriptor } = parse(source, { filename });
+  const fullPath = sfcDir ? `${sfcDir}/${filename}` : filename;
+  const { descriptor } = parse(source, { filename: fullPath });
+
+  doc.scriptSetup = !!descriptor.scriptSetup;
 
   // Extract template slots early (before early return) so template-only components get slots
   if (descriptor.template?.ast) {
@@ -91,7 +96,26 @@ export function parseSFC(source: string, filename: string, sfcDir?: string): Com
     return doc;
   }
 
-  const compiled = compileScript(descriptor, { id: filename });
+  let compiled;
+  try {
+    compiled = compileScript(descriptor, {
+      id: fullPath,
+      fs: {
+        fileExists: (file: string) => existsSync(file),
+        readFile: (file: string) => {
+          try {
+            return readFileSync(file, "utf-8");
+          } catch {
+            return undefined;
+          }
+        },
+      },
+    });
+  } catch {
+    // compileScript may fail when resolving imported types (e.g. no sfcDir).
+    // Return doc as-is with empty props/emits.
+    return doc;
+  }
 
   // Component-level JSDoc
   const componentJSDoc = extractComponentJSDoc(compiled.scriptSetupAst ?? compiled.scriptAst ?? []);
@@ -102,6 +126,7 @@ export function parseSFC(source: string, filename: string, sfcDir?: string): Com
   const setupAst = compiled.scriptSetupAst;
   if (setupAst) {
     const scriptSource = descriptor.scriptSetup?.content ?? compiled.content;
+    const importMap = buildImportMap(setupAst);
 
     for (const stmt of setupAst) {
       const calls = extractDefineCalls(stmt);
@@ -110,6 +135,14 @@ export function parseSFC(source: string, filename: string, sfcDir?: string): Com
           doc.props = extractProps(args[0], scriptSource);
         } else if (callee === "defineProps" && typeParams?.params[0]?.type === "TSTypeLiteral") {
           doc.props = extractTypeProps(typeParams.params[0], defaultsArg, scriptSource);
+        } else if (callee === "defineProps" && typeParams?.params[0]?.type === "TSTypeReference") {
+          const typeName = (typeParams.params[0] as any).typeName?.name as string | undefined;
+          if (typeName && sfcDir) {
+            const resolved = resolveImportedPropsType(typeName, importMap, sfcDir);
+            if (resolved) {
+              doc.props = extractTypeProps(resolved, defaultsArg, scriptSource);
+            }
+          }
         } else if (callee === "defineEmits" && args[0]?.type === "ArrayExpression") {
           doc.emits = extractEmits(args[0], leadingComments);
         } else if (callee === "defineEmits" && typeParams?.params[0]?.type === "TSTypeLiteral") {
@@ -122,8 +155,7 @@ export function parseSFC(source: string, filename: string, sfcDir?: string): Com
       }
     }
 
-    // Composable detection
-    const importMap = buildImportMap(setupAst);
+    // Composable detection (importMap already built above)
     doc.composables = extractComposables(setupAst, importMap, sfcDir);
   }
 

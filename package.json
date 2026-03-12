@@ -5,7 +5,8 @@
   "license": "MIT",
   "repository": "noopurphalak/compmark-vue",
   "bin": {
-    "compmark": "./dist/cli.mjs"
+    "compmark": "./dist/cli.mjs",
+    "compmark-vue": "./dist/cli.mjs"
   },
   "files": [
     "dist"
@@ -28,7 +29,9 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@vue/compiler-sfc": "^3.5.0"
+    "@vue/compiler-sfc": "^3.5.0",
+    "citty": "^0.2.1",
+    "tinyglobby": "^0.2.15"
   },
   "devDependencies": {
     "@babel/types": "latest",
@@ -50,6 +53,9 @@
       "oxlint --fix",
       "oxfmt"
     ]
+  },
+  "engines": {
+    "node": ">=20"
   },
   "packageManager": "pnpm@10.29.3"
 }

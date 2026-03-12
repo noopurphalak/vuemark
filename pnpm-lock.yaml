@@ -11,6 +11,12 @@ importers:
       '@vue/compiler-sfc':
         specifier: ^3.5.0
         version: 3.5.30
+      citty:
+        specifier: ^0.2.1
+        version: 0.2.1
+      tinyglobby:
+        specifier: ^0.2.15
+        version: 0.2.15
     devDependencies:
       '@babel/types':
         specifier: latest

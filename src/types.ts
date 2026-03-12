@@ -43,9 +43,20 @@ export interface ComponentDoc {
   name: string;
   description?: string;
   internal?: boolean;
+  scriptSetup?: boolean;
   props: PropDoc[];
   emits: EmitDoc[];
   slots?: SlotDoc[];
   exposes?: ExposeDoc[];
   composables?: ComposableDoc[];
+}
+
+export type OutputFormat = "md" | "json";
+
+export interface RunSummary {
+  documented: number;
+  skipped: number;
+  errors: number;
+  files: Array<{ path: string; doc: ComponentDoc }>;
+  errorDetails: Array<{ path: string; error: string }>;
 }

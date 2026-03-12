@@ -654,4 +654,53 @@ const { foo } = useNonExistent();
       expect(ne.variables[0]!.type).toBeUndefined();
     });
   });
+
+  // --- Phase 3: imported type resolution ---
+
+  describe("imported type props", () => {
+    it("resolves defineProps<ImportedType>() from external file", () => {
+      const fixtureDir = resolve(import.meta.dirname!, "fixtures");
+      const source = loadFixture("ImportedProps.vue");
+      const doc = parseSFC(source, "ImportedProps.vue", fixtureDir);
+
+      expect(doc.props.length).toBeGreaterThanOrEqual(2);
+
+      const label = doc.props.find((p) => p.name === "label")!;
+      expect(label).toBeDefined();
+      expect(label.type).toBe("string");
+      expect(label.required).toBe(true);
+
+      const disabled = doc.props.find((p) => p.name === "disabled")!;
+      expect(disabled).toBeDefined();
+      expect(disabled.type).toBe("boolean");
+      expect(disabled.required).toBe(false);
+    });
+
+    it("resolves withDefaults(defineProps<ImportedType>(), {...})", () => {
+      const fixtureDir = resolve(import.meta.dirname!, "fixtures");
+      const source = loadFixture("ImportedPropsDefaults.vue");
+      const doc = parseSFC(source, "ImportedPropsDefaults.vue", fixtureDir);
+
+      expect(doc.props.length).toBeGreaterThanOrEqual(2);
+
+      const disabled = doc.props.find((p) => p.name === "disabled")!;
+      expect(disabled).toBeDefined();
+      expect(disabled.default).toBe("false");
+
+      const size = doc.props.find((p) => p.name === "size")!;
+      expect(size).toBeDefined();
+      expect(size.default).toBe('"medium"');
+    });
+
+    it("returns empty props when sfcDir is not provided", () => {
+      const source = `<template><div /></template>
+<script setup lang="ts">
+import type { ButtonProps } from "./types/ButtonProps";
+defineProps<ButtonProps>();
+</script>`;
+      const doc = parseSFC(source, "Test.vue");
+      // Without sfcDir, can't resolve the import
+      expect(doc.props).toHaveLength(0);
+    });
+  });
 });

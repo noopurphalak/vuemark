@@ -28,8 +28,15 @@ export interface ExposeDoc {
   description: string;
 }
 
+export interface ComposableVariable {
+  name: string;
+  type?: string;
+}
+
 export interface ComposableDoc {
   name: string;
+  source?: string;
+  variables: ComposableVariable[];
 }
 
 export interface ComponentDoc {

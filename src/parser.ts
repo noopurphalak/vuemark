@@ -5,7 +5,16 @@ import type {
   ObjectProperty,
   TSTypeParameterInstantiation,
 } from "@babel/types";
-import type { ComponentDoc, PropDoc, EmitDoc, SlotDoc, ExposeDoc, ComposableDoc } from "./types.ts";
+import type {
+  ComponentDoc,
+  PropDoc,
+  EmitDoc,
+  SlotDoc,
+  ExposeDoc,
+  ComposableDoc,
+  ComposableVariable,
+} from "./types.ts";
+import { resolveImportPath, resolveComposableTypes } from "./resolver.ts";
 
 // --- JSDoc parsing ---
 
@@ -60,7 +69,7 @@ function parseJSDocTags(comments: Array<{ type: string; value: string }>): JSDoc
 
 // --- Main entry ---
 
-export function parseSFC(source: string, filename: string): ComponentDoc {
+export function parseSFC(source: string, filename: string, sfcDir?: string): ComponentDoc {
   const name =
     filename
       .replace(/\.vue$/, "")
@@ -114,7 +123,8 @@ export function parseSFC(source: string, filename: string): ComponentDoc {
     }
 
     // Composable detection
-    doc.composables = extractComposables(setupAst);
+    const importMap = buildImportMap(setupAst);
+    doc.composables = extractComposables(setupAst, importMap, sfcDir);
   }
 
   // Options API fallback
@@ -644,48 +654,165 @@ function extractExposes(
 
 // --- Composable detection ---
 
-function extractComposables(ast: Statement[]): ComposableDoc[] {
+function buildImportMap(ast: Statement[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const stmt of ast) {
+    if (stmt.type === "ImportDeclaration") {
+      for (const spec of stmt.specifiers ?? []) {
+        if (spec.type === "ImportSpecifier" || spec.type === "ImportDefaultSpecifier") {
+          map.set(spec.local.name, (stmt.source as any).value);
+        }
+      }
+    }
+  }
+  return map;
+}
+
+function extractVariablesFromPattern(decl: any): ComposableVariable[] {
+  const id = decl.id;
+  if (!id) return [];
+
+  // Simple assignment: const router = useRouter()
+  if (id.type === "Identifier") {
+    const v: ComposableVariable = { name: id.name };
+    // Check for TS type annotation: const router: Router = useRouter()
+    if (id.typeAnnotation?.typeAnnotation) {
+      v.type = resolveTypeString(id.typeAnnotation.typeAnnotation);
+    }
+    return [v];
+  }
+
+  // Object destructuring: const { x, y } = useMouse()
+  if (id.type === "ObjectPattern") {
+    const vars: ComposableVariable[] = [];
+    // Check for TS type annotation on the whole pattern
+    const typeAnnotation = id.typeAnnotation?.typeAnnotation;
+    const typeMembers = typeAnnotation?.type === "TSTypeLiteral" ? typeAnnotation.members : null;
+
+    for (const prop of id.properties) {
+      if (prop.type === "RestElement") {
+        // const { a, ...rest } = ...
+        const name = prop.argument?.name ?? "rest";
+        vars.push({ name });
+      } else if (prop.type === "ObjectProperty") {
+        // const { x } = ... OR const { x: posX } = ...
+        const name =
+          prop.value?.type === "Identifier"
+            ? prop.value.name
+            : prop.value?.type === "AssignmentPattern" && prop.value.left?.type === "Identifier"
+              ? prop.value.left.name
+              : prop.key?.type === "Identifier"
+                ? prop.key.name
+                : "";
+        if (!name) continue;
+
+        const v: ComposableVariable = { name };
+
+        // Try to get type from TS annotation on the pattern
+        if (typeMembers) {
+          const keyName = prop.key?.type === "Identifier" ? prop.key.name : "";
+          for (const member of typeMembers) {
+            if (
+              member.type === "TSPropertySignature" &&
+              member.key?.type === "Identifier" &&
+              member.key.name === keyName &&
+              member.typeAnnotation?.typeAnnotation
+            ) {
+              v.type = resolveTypeString(member.typeAnnotation.typeAnnotation);
+              break;
+            }
+          }
+        }
+
+        vars.push(v);
+      }
+    }
+    return vars;
+  }
+
+  // Array destructuring: const [count, setCount] = useCounter()
+  if (id.type === "ArrayPattern") {
+    const vars: ComposableVariable[] = [];
+    for (const el of id.elements) {
+      if (!el) continue;
+      if (el.type === "Identifier") {
+        vars.push({ name: el.name });
+      } else if (el.type === "RestElement" && el.argument?.type === "Identifier") {
+        vars.push({ name: el.argument.name });
+      } else if (el.type === "AssignmentPattern" && el.left?.type === "Identifier") {
+        vars.push({ name: el.left.name });
+      }
+    }
+    return vars;
+  }
+
+  return [];
+}
+
+function extractComposables(
+  ast: Statement[],
+  importMap: Map<string, string>,
+  sfcDir?: string,
+): ComposableDoc[] {
   const seen = new Set<string>();
   const composables: ComposableDoc[] = [];
 
   for (const stmt of ast) {
-    const callNames = extractComposableCallNames(stmt);
-    for (const name of callNames) {
+    // Bare call: useHead({...})
+    if (
+      stmt.type === "ExpressionStatement" &&
+      stmt.expression.type === "CallExpression" &&
+      stmt.expression.callee.type === "Identifier" &&
+      /^use[A-Z]/.test(stmt.expression.callee.name)
+    ) {
+      const name = stmt.expression.callee.name;
       if (!seen.has(name)) {
         seen.add(name);
-        composables.push({ name });
+        composables.push({
+          name,
+          source: importMap.get(name),
+          variables: [],
+        });
+      }
+    }
+
+    // Variable declaration: const x = useX() / const { a, b } = useX()
+    if (stmt.type === "VariableDeclaration") {
+      for (const decl of stmt.declarations) {
+        if (
+          decl.init?.type === "CallExpression" &&
+          decl.init.callee.type === "Identifier" &&
+          /^use[A-Z]/.test(decl.init.callee.name)
+        ) {
+          const name = decl.init.callee.name;
+          if (seen.has(name)) continue;
+          seen.add(name);
+
+          const variables = extractVariablesFromPattern(decl);
+          const source = importMap.get(name);
+
+          // Try cross-file type resolution for variables without types
+          const needsResolution = variables.some((v) => !v.type);
+          if (needsResolution && sfcDir && source) {
+            const resolvedPath = resolveImportPath(source, sfcDir);
+            if (resolvedPath) {
+              const varNames = variables.filter((v) => !v.type).map((v) => v.name);
+              const typeMap = resolveComposableTypes(resolvedPath, name, varNames);
+              for (const v of variables) {
+                if (!v.type && typeMap.has(v.name)) {
+                  v.type = typeMap.get(v.name);
+                }
+              }
+            }
+          }
+
+          composables.push({ name, source, variables });
+        }
       }
     }
   }
 
   return composables;
-}
-
-function extractComposableCallNames(stmt: Statement): string[] {
-  const names: string[] = [];
-
-  if (
-    stmt.type === "ExpressionStatement" &&
-    stmt.expression.type === "CallExpression" &&
-    stmt.expression.callee.type === "Identifier" &&
-    /^use[A-Z]/.test(stmt.expression.callee.name)
-  ) {
-    names.push(stmt.expression.callee.name);
-  }
-
-  if (stmt.type === "VariableDeclaration") {
-    for (const decl of stmt.declarations) {
-      if (
-        decl.init?.type === "CallExpression" &&
-        decl.init.callee.type === "Identifier" &&
-        /^use[A-Z]/.test(decl.init.callee.name)
-      ) {
-        names.push(decl.init.callee.name);
-      }
-    }
-  }
-
-  return names;
 }
 
 // --- Template slot extraction ---

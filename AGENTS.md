@@ -7,15 +7,16 @@ Auto-generate Markdown documentation from Vue 3 SFCs.
 ## Status
 
 - **Version:** 0.2.5
-- **Tests:** 64 passing (parser: 38, markdown: 17, CLI: 9)
-- **Coverage:** 88% statements, 93% lines
+- **Tests:** 74 passing (parser: 43, markdown: 22, CLI: 9)
+- **Coverage:** 70% statements, 75% lines (resolver.ts cross-file paths partially covered)
 
 ## Architecture
 
 ```
 src/
-  types.ts      — PropDoc, EmitDoc, SlotDoc, ExposeDoc, ComposableDoc, ComponentDoc interfaces
+  types.ts      — PropDoc, EmitDoc, SlotDoc, ExposeDoc, ComposableDoc, ComposableVariable, ComponentDoc interfaces
   parser.ts     — SFC parsing + AST extraction (core logic)
+  resolver.ts   — Cross-file import resolution + composable source type inference
   markdown.ts   — Markdown table generation (props, emits, slots, exposed, composables)
   index.ts      — Public library API (re-exports + parseComponent)
   cli.ts        — CLI entry point (argv, file I/O, @internal skip)
@@ -39,7 +40,11 @@ src/
 - `defineSlots<{...}>()` with typed bindings
 - Template `<slot>` extraction as fallback (`defineSlots` fully overrides when present)
 - `defineExpose({...})` with JSDoc descriptions
-- Composable detection (`use*` pattern)
+- Composable detection (`use*` pattern) with variable extraction and cross-file type inference
+- Composable variable bindings: destructured properties, simple assignments, array patterns, rest elements
+- Cross-file type resolver (`src/resolver.ts`): follows imports to composable source, infers types from `ref()`, `computed()`, `reactive()`, function signatures, literals
+- Import path resolution: relative paths, tsconfig/jsconfig alias paths (`@/...`)
+- Markdown composable output: sub-heading per composable with Variable/Type tables, source attribution
 - Enhanced JSDoc tags: `@deprecated`, `@since`, `@example`, `@see`, `@internal`
 - Component-level `@internal` tag → CLI skips with message
 - Options API support (`export default { props, emits }`)

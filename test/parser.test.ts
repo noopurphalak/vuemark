@@ -344,15 +344,22 @@ describe("parseSFC", () => {
   // --- Phase 2: composable detection ---
 
   describe("composable detection", () => {
-    it("detects composable calls (use* pattern)", () => {
+    it("detects composable calls with variable bindings", () => {
       const source = loadFixture("Composables.vue");
       const doc = parseSFC(source, "Composables.vue");
 
       expect(doc.composables).toHaveLength(2);
 
-      const names = doc.composables!.map((c) => c.name);
-      expect(names).toContain("useRouter");
-      expect(names).toContain("useMouse");
+      const router = doc.composables!.find((c) => c.name === "useRouter")!;
+      expect(router.variables).toHaveLength(1);
+      expect(router.variables[0]!.name).toBe("router");
+      expect(router.source).toBe("vue-router");
+
+      const mouse = doc.composables!.find((c) => c.name === "useMouse")!;
+      expect(mouse.variables).toHaveLength(2);
+      expect(mouse.variables[0]!.name).toBe("x");
+      expect(mouse.variables[1]!.name).toBe("y");
+      expect(mouse.source).toBe("@vueuse/core");
     });
 
     it("does not include non-composable calls", () => {
@@ -360,8 +367,52 @@ describe("parseSFC", () => {
       const doc = parseSFC(source, "Composables.vue");
 
       const names = doc.composables!.map((c) => c.name);
-      // should not include defineProps, etc.
       expect(names).not.toContain("defineProps");
+    });
+
+    it("extracts variable bindings from extended patterns", () => {
+      const source = loadFixture("ComposablesExtended.vue");
+      const doc = parseSFC(source, "ComposablesExtended.vue");
+
+      // useRouter with type annotation
+      const router = doc.composables!.find((c) => c.name === "useRouter")!;
+      expect(router.variables).toHaveLength(1);
+      expect(router.variables[0]!.name).toBe("router");
+      expect(router.variables[0]!.type).toBe("Router");
+
+      // useMouse with object destructuring
+      const mouse = doc.composables!.find((c) => c.name === "useMouse")!;
+      expect(mouse.variables).toHaveLength(2);
+      expect(mouse.variables[0]!.name).toBe("x");
+      expect(mouse.variables[1]!.name).toBe("y");
+
+      // useCounter with array destructuring
+      const counter = doc.composables!.find((c) => c.name === "useCounter")!;
+      expect(counter.variables).toHaveLength(2);
+      expect(counter.variables[0]!.name).toBe("count");
+      expect(counter.variables[1]!.name).toBe("setCount");
+
+      // useHead bare call
+      const head = doc.composables!.find((c) => c.name === "useHead")!;
+      expect(head.variables).toHaveLength(0);
+
+      // useDataLoader with rest pattern
+      const loader = doc.composables!.find((c) => c.name === "useDataLoader")!;
+      expect(loader.variables).toHaveLength(2);
+      expect(loader.variables[0]!.name).toBe("fetchAll");
+      expect(loader.variables[1]!.name).toBe("rest");
+      expect(loader.source).toBe("./composables/useDataLoader");
+    });
+
+    it("populates source from import map", () => {
+      const source = loadFixture("Composables.vue");
+      const doc = parseSFC(source, "Composables.vue");
+
+      const router = doc.composables!.find((c) => c.name === "useRouter")!;
+      expect(router.source).toBe("vue-router");
+
+      const mouse = doc.composables!.find((c) => c.name === "useMouse")!;
+      expect(mouse.source).toBe("@vueuse/core");
     });
   });
 
@@ -526,6 +577,81 @@ describe("parseSFC", () => {
       // Composables
       expect(doc.composables).toHaveLength(1);
       expect(doc.composables![0]!.name).toBe("useMouse");
+      expect(doc.composables![0]!.variables).toBeDefined();
+    });
+  });
+
+  // --- Cross-file type resolution ---
+
+  describe("cross-file type resolution", () => {
+    it("infers types from composable source file", () => {
+      const fixtureDir = resolve(import.meta.dirname!, "fixtures");
+      const source = loadFixture("ComposablesCrossFile.vue");
+      const doc = parseSFC(source, "ComposablesCrossFile.vue", fixtureDir);
+
+      const td = doc.composables!.find((c) => c.name === "useTestData")!;
+      expect(td).toBeDefined();
+      expect(td.variables.length).toBe(12);
+
+      const count = td.variables.find((v) => v.name === "count")!;
+      expect(count.type).toBe("Ref<number>");
+
+      const name = td.variables.find((v) => v.name === "name")!;
+      expect(name.type).toBe("Ref<string>");
+
+      const isActive = td.variables.find((v) => v.name === "isActive")!;
+      expect(isActive.type).toBe("Ref<boolean>");
+
+      const items = td.variables.find((v) => v.name === "items")!;
+      expect(items.type).toBe("Ref<Array>");
+
+      const config = td.variables.find((v) => v.name === "config")!;
+      expect(config.type).toBe("Ref<Object>");
+
+      const empty = td.variables.find((v) => v.name === "empty")!;
+      expect(empty.type).toBe("Ref<null>");
+
+      const total = td.variables.find((v) => v.name === "total")!;
+      expect(total.type).toBe("ComputedRef");
+
+      const state = td.variables.find((v) => v.name === "state")!;
+      expect(state.type).toBe("Object");
+
+      const fetchData = td.variables.find((v) => v.name === "fetchData")!;
+      expect(fetchData.type).toBe("(id, filter) => Promise<void>");
+
+      const reset = td.variables.find((v) => v.name === "reset")!;
+      expect(reset.type).toBe("() => void");
+
+      const label = td.variables.find((v) => v.name === "label")!;
+      expect(label.type).toBe("string");
+
+      const limit = td.variables.find((v) => v.name === "limit")!;
+      expect(limit.type).toBe("number");
+    });
+
+    it("skips resolution for node_modules imports", () => {
+      const fixtureDir = resolve(import.meta.dirname!, "fixtures");
+      const source = loadFixture("Composables.vue");
+      const doc = parseSFC(source, "Composables.vue", fixtureDir);
+
+      // node_modules imports should not have types resolved
+      const router = doc.composables!.find((c) => c.name === "useRouter")!;
+      expect(router.variables[0]!.type).toBeUndefined();
+    });
+
+    it("gracefully handles missing composable file", () => {
+      const fixtureDir = resolve(import.meta.dirname!, "fixtures");
+      const source = `<template><div /></template>
+<script setup lang="ts">
+import { useNonExistent } from "./composables/useNonExistent";
+const { foo } = useNonExistent();
+</script>`;
+      const doc = parseSFC(source, "Missing.vue", fixtureDir);
+
+      const ne = doc.composables!.find((c) => c.name === "useNonExistent")!;
+      expect(ne.variables[0]!.name).toBe("foo");
+      expect(ne.variables[0]!.type).toBeUndefined();
     });
   });
 });

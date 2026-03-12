@@ -17,5 +17,6 @@
     "noImplicitOverride": true,
     "noEmit": true,
     "types": ["node"]
-  }
+  },
+  "exclude": ["test/fixtures/composables"]
 }

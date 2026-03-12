@@ -266,18 +266,115 @@ describe("generateMarkdown", () => {
     expect(md).toContain("| reset | unknown | - |");
   });
 
-  it("renders composables list", () => {
+  it("renders composable with simple returns (1-3 vars, no types)", () => {
     const doc: ComponentDoc = {
       name: "Page",
       props: [],
       emits: [],
-      composables: [{ name: "useRouter" }, { name: "useMouse" }],
+      composables: [
+        { name: "useRouter", variables: [{ name: "router" }] },
+        { name: "useMouse", variables: [{ name: "x" }, { name: "y" }] },
+      ],
     };
 
     const md = generateMarkdown(doc);
     expect(md).toContain("## Composables Used");
-    expect(md).toContain("- `useRouter`");
-    expect(md).toContain("- `useMouse`");
+    expect(md).toContain("### `useRouter`");
+    expect(md).toContain("**Returns:** `router`");
+    expect(md).toContain("### `useMouse`");
+    expect(md).toContain("**Returns:** `x`, `y`");
+  });
+
+  it("renders composable bare call (no variables)", () => {
+    const doc: ComponentDoc = {
+      name: "Page",
+      props: [],
+      emits: [],
+      composables: [{ name: "useHead", variables: [] }],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("### `useHead`");
+    expect(md).toContain("Called for side effects.");
+  });
+
+  it("renders composable with typed variables as table", () => {
+    const doc: ComponentDoc = {
+      name: "Page",
+      props: [],
+      emits: [],
+      composables: [
+        {
+          name: "useData",
+          source: "./composables/useData",
+          variables: [
+            { name: "count", type: "Ref<number>" },
+            { name: "total", type: "ComputedRef" },
+            { name: "fetchData", type: "(id) => Promise<void>" },
+          ],
+        },
+      ],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("### `useData`");
+    expect(md).toContain("*Source: `./composables/useData`*");
+    expect(md).toContain("| Variable | Type |");
+    expect(md).toContain("| count | Ref&lt;number&gt; |");
+    expect(md).toContain("| total | ComputedRef |");
+    expect(md).toContain("| fetchData | (id) =&gt; Promise&lt;void&gt; |");
+  });
+
+  it("renders composable table for 4+ untyped variables", () => {
+    const doc: ComponentDoc = {
+      name: "Page",
+      props: [],
+      emits: [],
+      composables: [
+        {
+          name: "useForm",
+          variables: [{ name: "a" }, { name: "b" }, { name: "c" }, { name: "d" }],
+        },
+      ],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("| Variable | Type |");
+    expect(md).toContain("| a | - |");
+    expect(md).toContain("| d | - |");
+  });
+
+  it("does not show source for node_modules imports", () => {
+    const doc: ComponentDoc = {
+      name: "Page",
+      props: [],
+      emits: [],
+      composables: [
+        { name: "useRouter", source: "vue-router", variables: [{ name: "router" }] },
+        { name: "useMouse", source: "@vueuse/core", variables: [{ name: "x" }, { name: "y" }] },
+      ],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).not.toContain("*Source:");
+  });
+
+  it("shows source for @/ alias imports", () => {
+    const doc: ComponentDoc = {
+      name: "Page",
+      props: [],
+      emits: [],
+      composables: [
+        {
+          name: "useAuth",
+          source: "@/composables/useAuth",
+          variables: [{ name: "user", type: "Ref<User>" }],
+        },
+      ],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("*Source: `@/composables/useAuth`*");
   });
 
   it("escapes pipe characters in union types", () => {

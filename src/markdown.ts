@@ -4,6 +4,10 @@ function esc(value: string): string {
   return value.replaceAll("|", "\\|");
 }
 
+function escHtml(value: string): string {
+  return value.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
 export function generateMarkdown(doc: ComponentDoc): string {
   const sections: string[] = [`# ${doc.name}`];
 
@@ -109,9 +113,36 @@ export function generateMarkdown(doc: ComponentDoc): string {
 
   // Composables
   if (hasComposables) {
-    sections.push("", "## Composables Used", "");
+    sections.push("", "## Composables Used");
+
     for (const c of doc.composables!) {
-      sections.push(`- \`${c.name}\``);
+      sections.push("", `### \`${c.name}\``);
+
+      // Source line for local imports
+      if (c.source && (c.source.startsWith(".") || c.source.startsWith("@/"))) {
+        sections.push("", `*Source: \`${c.source}\`*`);
+      }
+
+      if (c.variables.length === 0) {
+        // Bare call
+        sections.push("", "Called for side effects.");
+      } else {
+        const hasTypes = c.variables.some((v) => v.type);
+        if (!hasTypes && c.variables.length <= 3) {
+          // Simple returns line
+          const vars = c.variables.map((v) => `\`${v.name}\``).join(", ");
+          sections.push("", `**Returns:** ${vars}`);
+        } else {
+          // Full table
+          sections.push("");
+          sections.push("| Variable | Type |");
+          sections.push("| --- | --- |");
+          for (const v of c.variables) {
+            const type = v.type ? escHtml(esc(v.type)) : "-";
+            sections.push(`| ${esc(v.name)} | ${type} |`);
+          }
+        }
+      }
     }
   }
 

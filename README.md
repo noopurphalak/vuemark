@@ -9,6 +9,21 @@
 
 Auto-generate Markdown documentation from Vue 3 SFCs. Zero configuration required.
 
+## Installation
+
+```sh
+# npm
+npm install -D compmark-vue
+
+# pnpm
+pnpm add -D compmark-vue
+
+# yarn
+yarn add -D compmark-vue
+```
+
+> Requires Node.js >= 20
+
 ## Quick Start
 
 Document a single component:

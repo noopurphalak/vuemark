@@ -1,5 +1,7 @@
 Keep AGENTS.md updated with project status
 
+Always use sub agents for complex tasks.
+
 # compmark-vue
 
 Auto-generate Markdown documentation from Vue 3 SFCs.

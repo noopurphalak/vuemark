@@ -19,15 +19,97 @@ export function generateMarkdown(doc: ComponentDoc): string {
     sections.push("", "**Note:** Uses `<script setup>` syntax.");
   }
 
+  const hasRefs = (doc.refs?.length ?? 0) > 0;
+  const hasComputeds = (doc.computeds?.length ?? 0) > 0;
   const hasProps = doc.props.length > 0;
   const hasEmits = doc.emits.length > 0;
   const hasSlots = (doc.slots?.length ?? 0) > 0;
   const hasExposes = (doc.exposes?.length ?? 0) > 0;
   const hasComposables = (doc.composables?.length ?? 0) > 0;
 
-  if (!hasProps && !hasEmits && !hasSlots && !hasExposes && !hasComposables) {
+  if (
+    !hasProps &&
+    !hasEmits &&
+    !hasSlots &&
+    !hasExposes &&
+    !hasComposables &&
+    !hasRefs &&
+    !hasComputeds
+  ) {
     sections.push("", "No documentable API found.");
     return sections.join("\n") + "\n";
+  }
+
+  // Refs
+  if (hasRefs) {
+    sections.push("", "## Refs", "");
+    sections.push("| Name | Type | Description |");
+    sections.push("| --- | --- | --- |");
+
+    const examples: Array<{ name: string; example: string }> = [];
+
+    for (const r of doc.refs!) {
+      let desc = r.description || "-";
+
+      if (r.deprecated) {
+        desc +=
+          typeof r.deprecated === "string" && r.deprecated
+            ? ` **Deprecated**: ${r.deprecated}`
+            : " **Deprecated**";
+      }
+      if (r.since) {
+        desc += ` *(since ${r.since})*`;
+      }
+      if (r.see) {
+        desc += ` See: ${r.see}`;
+      }
+
+      sections.push(`| ${esc(r.name)} | ${escHtml(esc(r.type))} | ${esc(desc)} |`);
+
+      if (r.example) {
+        examples.push({ name: r.name, example: r.example });
+      }
+    }
+
+    for (const { name, example } of examples) {
+      sections.push("", `**\`${name}\` example:**`, "", "```", example, "```");
+    }
+  }
+
+  // Computed
+  if (hasComputeds) {
+    sections.push("", "## Computed", "");
+    sections.push("| Name | Type | Description |");
+    sections.push("| --- | --- | --- |");
+
+    const examples: Array<{ name: string; example: string }> = [];
+
+    for (const c of doc.computeds!) {
+      let desc = c.description || "-";
+
+      if (c.deprecated) {
+        desc +=
+          typeof c.deprecated === "string" && c.deprecated
+            ? ` **Deprecated**: ${c.deprecated}`
+            : " **Deprecated**";
+      }
+      if (c.since) {
+        desc += ` *(since ${c.since})*`;
+      }
+      if (c.see) {
+        desc += ` See: ${c.see}`;
+      }
+
+      sections.push(`| ${esc(c.name)} | ${escHtml(esc(c.type))} | ${esc(desc)} |`);
+
+      if (c.example) {
+        examples.push({ name: c.name, example: c.example });
+      }
+    }
+
+    for (const { name, example } of examples) {
+      sections.push("", `**\`${name}\` example:**`, "", "```", example, "```");
+    }
   }
 
   // Props

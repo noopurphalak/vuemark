@@ -14,6 +14,8 @@ import type {
   ExposeDoc,
   ComposableDoc,
   ComposableVariable,
+  RefDoc,
+  ComputedDoc,
 } from "./types.ts";
 import { resolveImportPath, resolveComposableTypes } from "./resolver.ts";
 import { resolveImportedPropsType } from "./type-resolver.ts";
@@ -157,6 +159,11 @@ export function parseSFC(source: string, filename: string, sfcDir?: string): Com
 
     // Composable detection (importMap already built above)
     doc.composables = extractComposables(setupAst, importMap, sfcDir);
+
+    // Ref and computed extraction
+    const { refs, computeds } = extractRefsAndComputeds(setupAst, scriptSource);
+    if (refs.length > 0) doc.refs = refs;
+    if (computeds.length > 0) doc.computeds = computeds;
   }
 
   // Options API fallback
@@ -165,6 +172,8 @@ export function parseSFC(source: string, filename: string, sfcDir?: string): Com
     const optionsDoc = extractOptionsAPI(scriptAst, compiled.content);
     doc.props = optionsDoc.props;
     doc.emits = optionsDoc.emits;
+    if (optionsDoc.refs.length > 0) doc.refs = optionsDoc.refs;
+    if (optionsDoc.computeds.length > 0) doc.computeds = optionsDoc.computeds;
   }
 
   return doc;
@@ -180,18 +189,39 @@ function extractComponentJSDoc(ast: Statement[]): { description: string; interna
 
   if (comments.length === 0) return { description: "", internal: false };
 
-  // Only consider the first comment block as component-level if it's not
-  // attached to a define call
   const firstComment = comments[0]!;
   if (firstComment.type !== "CommentBlock") return { description: "", internal: false };
 
-  // Check if this is a component-level comment (starts with @component or is before any define call)
   const result = parseJSDocTags([firstComment]);
 
-  // Only treat as component-level if it has @internal or @component tag,
-  // or if the first statement is not a define call
+  // Always extract @internal
   if (result.internal) {
     return { description: result.description, internal: true };
+  }
+
+  // Treat the first comment as component-level if:
+  // 1. It has a @component tag (explicit)
+  // 2. The first statement is an import (comment is clearly component-level)
+  // 3. The first statement is a define call (prop/emit docs live inside the type, not on the statement)
+  // Skip when the first statement is a variable declaration (comment likely describes the variable)
+  const isImport = first.type === "ImportDeclaration";
+  const isDefineCall =
+    first.type === "ExpressionStatement" &&
+    first.expression.type === "CallExpression" &&
+    first.expression.callee.type === "Identifier" &&
+    first.expression.callee.name.startsWith("define");
+  const isDefineVar =
+    first.type === "VariableDeclaration" &&
+    first.declarations.some(
+      (d: any) =>
+        d.init?.type === "CallExpression" &&
+        d.init.callee?.type === "Identifier" &&
+        (d.init.callee.name.startsWith("define") || d.init.callee.name === "withDefaults"),
+    );
+  const hasComponentTag = firstComment.value.includes("@component");
+
+  if (hasComponentTag || isImport || isDefineCall || isDefineVar) {
+    return { description: result.description, internal: false };
   }
 
   return { description: "", internal: false };
@@ -847,6 +877,159 @@ function extractComposables(
   return composables;
 }
 
+// --- Ref and Computed extraction ---
+
+const REF_CALLEES = new Set(["ref", "shallowRef", "reactive", "shallowReactive"]);
+const COMPUTED_CALLEES = new Set(["computed"]);
+const SKIP_CALLEES = new Set([
+  "defineProps",
+  "defineEmits",
+  "defineSlots",
+  "defineExpose",
+  "withDefaults",
+]);
+
+function inferLiteralType(node: Expression): string | null {
+  switch (node.type) {
+    case "StringLiteral":
+      return "string";
+    case "NumericLiteral":
+      return "number";
+    case "BooleanLiteral":
+      return "boolean";
+    case "ArrayExpression":
+      return "Array";
+    case "ObjectExpression":
+      return "Object";
+    case "NullLiteral":
+      return "null";
+    default:
+      return null;
+  }
+}
+
+function extractRefsAndComputeds(
+  ast: Statement[],
+  _scriptSource: string,
+): { refs: RefDoc[]; computeds: ComputedDoc[] } {
+  const refs: RefDoc[] = [];
+  const computeds: ComputedDoc[] = [];
+
+  for (const stmt of ast) {
+    if (stmt.type !== "VariableDeclaration") continue;
+
+    const comments = (stmt.leadingComments ?? []) as Array<{ type: string; value: string }>;
+
+    for (const decl of stmt.declarations) {
+      if (!decl.init || decl.init.type !== "CallExpression") continue;
+      if (decl.init.callee.type !== "Identifier") continue;
+
+      const calleeName = decl.init.callee.name;
+
+      // Skip composables (use[A-Z]*) and define* macros
+      if (/^use[A-Z]/.test(calleeName)) continue;
+      if (SKIP_CALLEES.has(calleeName)) continue;
+
+      const isRef = REF_CALLEES.has(calleeName);
+      const isComputed = COMPUTED_CALLEES.has(calleeName);
+      if (!isRef && !isComputed) continue;
+
+      // Get the variable name
+      const id = decl.id;
+      if (!id || id.type !== "Identifier") continue;
+      const varName = id.name;
+
+      const jsdoc = parseJSDocTags(comments);
+
+      const callExpr = decl.init;
+      const typeParams = callExpr.typeParameters as TSTypeParameterInstantiation | undefined;
+      const args = callExpr.arguments as Expression[];
+
+      let type: string;
+
+      // Priority 1: Explicit TS annotation on the variable
+      if ((id.typeAnnotation as any)?.typeAnnotation) {
+        type = resolveTypeString((id.typeAnnotation as any).typeAnnotation);
+      }
+      // Priority 2: Generic type parameter e.g. ref<string>()
+      else if (typeParams?.params?.[0]) {
+        const genericType = resolveTypeString(typeParams.params[0]);
+        if (calleeName === "reactive" || calleeName === "shallowReactive") {
+          type = genericType;
+        } else if (calleeName === "shallowRef") {
+          type = `ShallowRef<${genericType}>`;
+        } else if (calleeName === "computed") {
+          type = `ComputedRef<${genericType}>`;
+        } else {
+          // ref
+          type = `Ref<${genericType}>`;
+        }
+      }
+      // Priority 3: Infer from argument literal
+      else if (isRef && args[0]) {
+        const literalType = inferLiteralType(args[0]);
+        if (literalType) {
+          if (calleeName === "reactive" || calleeName === "shallowReactive") {
+            type = literalType;
+          } else if (calleeName === "shallowRef") {
+            type = `ShallowRef<${literalType}>`;
+          } else {
+            type = `Ref<${literalType}>`;
+          }
+        } else {
+          // Non-literal argument, fallback
+          if (calleeName === "reactive") type = "Object";
+          else if (calleeName === "shallowReactive") type = "Object";
+          else if (calleeName === "shallowRef") type = "ShallowRef";
+          else type = "Ref";
+        }
+      }
+      // Priority 3 for computed: check getter return type annotation
+      else if (isComputed && args[0]) {
+        let returnType: string | null = null;
+        const getter = args[0];
+        if (
+          (getter.type === "ArrowFunctionExpression" || getter.type === "FunctionExpression") &&
+          getter.returnType?.type === "TSTypeAnnotation"
+        ) {
+          returnType = resolveTypeString(getter.returnType.typeAnnotation);
+        }
+        if (returnType) {
+          type = `ComputedRef<${returnType}>`;
+        } else {
+          type = "ComputedRef";
+        }
+      }
+      // Priority 4: Fallback (no args, no generics)
+      else {
+        if (calleeName === "reactive") type = "Object";
+        else if (calleeName === "shallowReactive") type = "Object";
+        else if (calleeName === "shallowRef") type = "ShallowRef";
+        else if (calleeName === "computed") type = "ComputedRef";
+        else type = "Ref";
+      }
+
+      const docEntry = {
+        name: varName,
+        type,
+        description: jsdoc.description,
+        ...(jsdoc.deprecated !== undefined && { deprecated: jsdoc.deprecated }),
+        ...(jsdoc.since && { since: jsdoc.since }),
+        ...(jsdoc.example && { example: jsdoc.example }),
+        ...(jsdoc.see && { see: jsdoc.see }),
+      };
+
+      if (isRef) {
+        refs.push(docEntry);
+      } else {
+        computeds.push(docEntry);
+      }
+    }
+  }
+
+  return { refs, computeds };
+}
+
 // --- Template slot extraction ---
 
 function extractTemplateSlots(templateAst: any): SlotDoc[] {
@@ -897,9 +1080,11 @@ function walkTemplate(children: any[], slots: SlotDoc[]): void {
 function extractOptionsAPI(
   ast: Statement[],
   source: string,
-): { props: PropDoc[]; emits: EmitDoc[] } {
+): { props: PropDoc[]; emits: EmitDoc[]; refs: RefDoc[]; computeds: ComputedDoc[] } {
   let props: PropDoc[] = [];
   let emits: EmitDoc[] = [];
+  let refs: RefDoc[] = [];
+  let computeds: ComputedDoc[] = [];
 
   for (const stmt of ast) {
     if (stmt.type !== "ExportDefaultDeclaration") continue;
@@ -907,11 +1092,12 @@ function extractOptionsAPI(
     if (decl.type !== "ObjectExpression") continue;
 
     for (const prop of decl.properties) {
-      if (prop.type !== "ObjectProperty") continue;
+      if (prop.type !== "ObjectProperty" && prop.type !== "ObjectMethod") continue;
       const key = prop.key;
       const name = key.type === "Identifier" ? key.name : "";
 
       if (name === "props") {
+        if (prop.type !== "ObjectProperty") continue;
         if (prop.value.type === "ObjectExpression") {
           props = extractProps(
             prop.value as Extract<Expression, { type: "ObjectExpression" }>,
@@ -921,6 +1107,7 @@ function extractOptionsAPI(
           props = extractArrayProps(prop.value as Extract<Expression, { type: "ArrayExpression" }>);
         }
       } else if (name === "emits") {
+        if (prop.type !== "ObjectProperty") continue;
         if (prop.value.type === "ArrayExpression") {
           const comments = (stmt.leadingComments ?? []) as Array<{ type: string; value: string }>;
           emits = extractEmits(
@@ -932,13 +1119,145 @@ function extractOptionsAPI(
             prop.value as Extract<Expression, { type: "ObjectExpression" }>,
           );
         }
+      } else if (name === "data") {
+        refs = extractOptionsData(prop);
+      } else if (name === "computed") {
+        if (prop.type !== "ObjectProperty") continue;
+        if (prop.value.type === "ObjectExpression") {
+          computeds = extractOptionsComputed(prop.value);
+        }
       }
     }
 
     break; // only process first export default
   }
 
-  return { props, emits };
+  return { props, emits, refs, computeds };
+}
+
+function extractOptionsData(prop: any): RefDoc[] {
+  const refs: RefDoc[] = [];
+
+  // data can be ObjectMethod: data() { return {...} }
+  // or ObjectProperty with ArrowFunctionExpression/FunctionExpression value
+  let body: any = null;
+
+  if (prop.type === "ObjectMethod") {
+    body = prop.body;
+  } else if (prop.type === "ObjectProperty") {
+    const val = prop.value;
+    if (val.type === "ArrowFunctionExpression" || val.type === "FunctionExpression") {
+      body = val.body;
+    }
+  }
+
+  if (!body) return refs;
+
+  // Find the return statement
+  let returnArg: any = null;
+
+  if (body.type === "ObjectExpression") {
+    // Arrow with implicit return: data: () => ({ count: 0 })
+    returnArg = body;
+  } else if (body.type === "BlockStatement") {
+    for (const s of body.body) {
+      if (s.type === "ReturnStatement" && s.argument?.type === "ObjectExpression") {
+        returnArg = s.argument;
+        break;
+      }
+    }
+  }
+
+  if (!returnArg || returnArg.type !== "ObjectExpression") return refs;
+
+  for (const p of returnArg.properties) {
+    if (p.type !== "ObjectProperty") continue;
+    const name =
+      p.key.type === "Identifier" ? p.key.name : p.key.type === "StringLiteral" ? p.key.value : "";
+    if (!name) continue;
+
+    const jsdoc = parseJSDocTags(
+      (p.leadingComments ?? []) as Array<{ type: string; value: string }>,
+    );
+
+    const literalType = inferLiteralType(p.value as Expression);
+    const type = literalType ?? "unknown";
+
+    refs.push({
+      name,
+      type,
+      description: jsdoc.description,
+      ...(jsdoc.deprecated !== undefined && { deprecated: jsdoc.deprecated }),
+      ...(jsdoc.since && { since: jsdoc.since }),
+      ...(jsdoc.example && { example: jsdoc.example }),
+      ...(jsdoc.see && { see: jsdoc.see }),
+    });
+  }
+
+  return refs;
+}
+
+function extractOptionsComputed(obj: any): ComputedDoc[] {
+  const computeds: ComputedDoc[] = [];
+
+  for (const prop of obj.properties) {
+    if (prop.type !== "ObjectProperty" && prop.type !== "ObjectMethod") continue;
+
+    const name =
+      prop.key.type === "Identifier"
+        ? prop.key.name
+        : prop.key.type === "StringLiteral"
+          ? prop.key.value
+          : "";
+    if (!name) continue;
+
+    const jsdoc = parseJSDocTags(
+      (prop.leadingComments ?? []) as Array<{ type: string; value: string }>,
+    );
+
+    let type = "unknown";
+
+    if (prop.type === "ObjectMethod") {
+      // computed: { fullName() { return ... } }
+      if (prop.returnType?.type === "TSTypeAnnotation") {
+        type = resolveTypeString(prop.returnType.typeAnnotation);
+      }
+    } else if (prop.type === "ObjectProperty") {
+      const val = prop.value;
+      if (val.type === "ObjectExpression") {
+        // get/set syntax: computed: { fullName: { get() {}, set() {} } }
+        for (const member of val.properties) {
+          if (
+            member.type === "ObjectMethod" &&
+            member.key?.type === "Identifier" &&
+            member.key.name === "get"
+          ) {
+            if (member.returnType?.type === "TSTypeAnnotation") {
+              type = resolveTypeString(member.returnType.typeAnnotation);
+            }
+            break;
+          }
+        }
+      } else if (val.type === "ArrowFunctionExpression" || val.type === "FunctionExpression") {
+        // computed: { fullName: () => ... } or computed: { fullName: function() { ... } }
+        if (val.returnType?.type === "TSTypeAnnotation") {
+          type = resolveTypeString(val.returnType.typeAnnotation);
+        }
+      }
+    }
+
+    computeds.push({
+      name,
+      type,
+      description: jsdoc.description,
+      ...(jsdoc.deprecated !== undefined && { deprecated: jsdoc.deprecated }),
+      ...(jsdoc.since && { since: jsdoc.since }),
+      ...(jsdoc.example && { example: jsdoc.example }),
+      ...(jsdoc.see && { see: jsdoc.see }),
+    });
+  }
+
+  return computeds;
 }
 
 function extractArrayProps(arr: Extract<Expression, { type: "ArrayExpression" }>): PropDoc[] {

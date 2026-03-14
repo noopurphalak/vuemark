@@ -8,23 +8,22 @@ Auto-generate Markdown documentation from Vue 3 SFCs.
 
 ## Status
 
-- **Version:** 0.3.0
-- **Tests:** 103 passing (parser: 46, markdown: 22, CLI: 9, CLI-phase3: 13, discovery: 8, type-resolver: 5)
-- **Coverage:** 71% statements, 75% lines
+- **Version:** 0.4.0
+- **Tests:** 140 passing (parser: 69, markdown: 29, CLI: 9, CLI-phase3: 16, discovery: 12, type-resolver: 5)
 
 ## Architecture
 
 ```
 src/
-  types.ts          — PropDoc, EmitDoc, SlotDoc, ExposeDoc, ComposableDoc, ComposableVariable, ComponentDoc, OutputFormat, RunSummary interfaces
-  parser.ts         — SFC parsing + AST extraction (core logic)
+  types.ts          — PropDoc, EmitDoc, SlotDoc, ExposeDoc, ComposableDoc, ComposableVariable, RefDoc, ComputedDoc, ComponentDoc, OutputFormat, RunSummary, DiscoveryResult interfaces
+  parser.ts         — SFC parsing + AST extraction (core logic); ref/computed extraction, Options API data()/computed support
   resolver.ts       — Cross-file import resolution + composable source type inference
   type-resolver.ts  — Resolve defineProps<ImportedType>() across files
-  markdown.ts       — Markdown table generation (props, emits, slots, exposed, composables) + adjustHeadingLevel
-  discovery.ts      — File discovery (single file, directory, glob → absolute paths via tinyglobby)
+  markdown.ts       — Markdown table generation (refs, computed, props, emits, slots, exposed, composables) + adjustHeadingLevel
+  discovery.ts      — File discovery (single file, directory, glob → absolute paths via tinyglobby); returns DiscoveryResult with ignoredCount and basePath
   runner.ts         — Multi-file processing loop, error collection
-  output.ts         — Output modes (individual md, joined md, JSON)
-  watcher.ts        — Watch mode with fs.watch + debounce
+  output.ts         — Output modes (individual md, joined md, JSON); supports preserveStructure option and returns Map<source, output> paths
+  watcher.ts        — Watch mode with fs.watch + debounce; incremental updates in individual mode, stale output cleanup
   index.ts          — Public library API (re-exports + parseComponent)
   cli.ts            — CLI entry point (citty-based, orchestrates full pipeline)
 ```
@@ -87,8 +86,20 @@ src/
 - **Engine requirement**: `node >= 20` (for recursive `fs.watch`)
 - **Dependencies**: citty (CLI parser), tinyglobby (glob matching)
 
+## Phase 4 (v0.4.0) — Complete
+
+- **Ref/computed extraction** (`src/parser.ts`): `ref()`, `shallowRef()`, `reactive()`, `shallowReactive()`, `computed()` from `<script setup>` with type inference (explicit annotation, generics, literal inference)
+- **Options API data/computed** (`src/parser.ts`): `data()` returns → `RefDoc[]`, `computed` object → `ComputedDoc[]`
+- **Markdown Refs & Computed sections** (`src/markdown.ts`): new sections before Props with Name/Type/Description tables, HTML escaping for generics, @deprecated/@since/@example/@see annotations
+- **DiscoveryResult interface** (`src/types.ts`): `discoverFiles` now returns `{ files, ignoredCount, basePath }` instead of plain `string[]`
+- **Ignored file counting** (`src/discovery.ts`): when user ignore patterns exist, runs glob twice to compute `ignoredCount`; computes `basePath` as common ancestor directory
+- **`--preserve-structure` flag** (`src/cli.ts`): preserves input folder hierarchy in output directory
+- **Output path mapping** (`src/output.ts`): `writeIndividualMarkdown` and `writeJSON` return `Map<string, string>` (source → output); support `preserveStructure` + `basePath` options for subdirectory creation
+- **Summary line update**: skipped count now includes `ignoredCount` from discovery
+- **Watch mode improvements** (`src/watcher.ts`): incremental updates in individual mode (only re-parse changed files), stale output cleanup when files are deleted or become `@internal`, `WatcherOptions` interface with `incrementalUpdate`/`removeOutput` callbacks
+- **Component-level descriptions** (`src/parser.ts`): JSDoc on first statement (import or define call) is extracted as `doc.description`; `@component` tag for explicit marking when first statement is a variable
+
 ## Not yet implemented
 
 - `defineModel` (Vue 3.4+)
 - Config file
-- Watch mode debounce tuning

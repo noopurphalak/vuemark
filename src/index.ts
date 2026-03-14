@@ -10,8 +10,11 @@ export type {
   ExposeDoc,
   ComposableDoc,
   ComposableVariable,
+  RefDoc,
+  ComputedDoc,
   OutputFormat,
   RunSummary,
+  DiscoveryResult,
 } from "./types.ts";
 export { parseSFC } from "./parser.ts";
 export { generateMarkdown, adjustHeadingLevel } from "./markdown.ts";

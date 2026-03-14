@@ -478,6 +478,90 @@ describe("parseSFC", () => {
     });
   });
 
+  // --- Component-level description ---
+
+  describe("component-level description", () => {
+    it("extracts description when first statement is an import", () => {
+      const source = `<template><div /></template>
+<script setup lang="ts">
+/**
+ * A reusable button component.
+ */
+import { ref } from "vue";
+const count = ref(0);
+</script>`;
+      const doc = parseSFC(source, "Button.vue");
+      expect(doc.description).toBe("A reusable button component.");
+    });
+
+    it("extracts description when first statement is a define call", () => {
+      const source = `<template><div /></template>
+<script setup lang="ts">
+/**
+ * A dialog for confirming actions.
+ */
+defineProps<{ open: boolean }>();
+</script>`;
+      const doc = parseSFC(source, "Dialog.vue");
+      expect(doc.description).toBe("A dialog for confirming actions.");
+    });
+
+    it("extracts description from const defineProps pattern", () => {
+      const source = `<template><div /></template>
+<script setup lang="ts">
+/**
+ * A card component with slots.
+ */
+const props = defineProps<{ title: string }>();
+</script>`;
+      const doc = parseSFC(source, "Card.vue");
+      expect(doc.description).toBe("A card component with slots.");
+    });
+
+    it("extracts description with @component tag", () => {
+      const source = `<template><div /></template>
+<script setup lang="ts">
+/**
+ * @component
+ * A tooltip that appears on hover.
+ */
+const visible = ref(false);
+</script>`;
+      const doc = parseSFC(source, "Tooltip.vue");
+      expect(doc.description).toBe("A tooltip that appears on hover.");
+    });
+
+    it("does not extract description from a ref variable comment", () => {
+      const source = `<template><div /></template>
+<script setup lang="ts">
+/**
+ * The counter value
+ */
+const count = ref(0);
+</script>`;
+      const doc = parseSFC(source, "Counter.vue");
+      expect(doc.description).toBeFalsy();
+    });
+
+    it("extracts description with withDefaults as first statement", () => {
+      const source = `<template><div /></template>
+<script setup lang="ts">
+/**
+ * A toggle button.
+ */
+const props = withDefaults(defineProps<{ active?: boolean }>(), { active: false });
+</script>`;
+      const doc = parseSFC(source, "Toggle.vue");
+      expect(doc.description).toBe("A toggle button.");
+    });
+
+    it("preserves description alongside @internal", () => {
+      const source = loadFixture("InternalComponent.vue");
+      const doc = parseSFC(source, "InternalComponent.vue");
+      expect(doc.internal).toBe(true);
+    });
+  });
+
   // --- Phase 2: Options API ---
 
   describe("Options API", () => {
@@ -701,6 +785,193 @@ defineProps<ButtonProps>();
       const doc = parseSFC(source, "Test.vue");
       // Without sfcDir, can't resolve the import
       expect(doc.props).toHaveLength(0);
+    });
+  });
+
+  // --- v0.4.0: ref() and computed() extraction ---
+
+  describe("ref and computed extraction", () => {
+    it("extracts ref() with literal inference", () => {
+      const source = loadFixture("RefsAndComputed.vue");
+      const doc = parseSFC(source, "RefsAndComputed.vue");
+
+      expect(doc.refs).toBeDefined();
+      const count = doc.refs!.find((r) => r.name === "count")!;
+      expect(count.type).toBe("Ref<number>");
+      expect(count.description).toBe("The counter value");
+      expect(count.since).toBe("1.0.0");
+    });
+
+    it("extracts ref<T>() with generic", () => {
+      const source = loadFixture("RefsAndComputed.vue");
+      const doc = parseSFC(source, "RefsAndComputed.vue");
+
+      const name = doc.refs!.find((r) => r.name === "name")!;
+      expect(name.type).toBe("Ref<string>");
+    });
+
+    it("extracts shallowRef<T>() detection", () => {
+      const source = loadFixture("RefsAndComputed.vue");
+      const doc = parseSFC(source, "RefsAndComputed.vue");
+
+      const data = doc.refs!.find((r) => r.name === "data")!;
+      expect(data.type).toBe("ShallowRef<string[]>");
+      expect(data.deprecated).toBe("Use shallowData instead");
+    });
+
+    it("extracts reactive() as Object", () => {
+      const source = loadFixture("RefsAndComputed.vue");
+      const doc = parseSFC(source, "RefsAndComputed.vue");
+
+      const state = doc.refs!.find((r) => r.name === "state")!;
+      expect(state.type).toBe("Object");
+    });
+
+    it("extracts reactive<T>() with generic type", () => {
+      const source = loadFixture("RefsAndComputed.vue");
+      const doc = parseSFC(source, "RefsAndComputed.vue");
+
+      const typedState = doc.refs!.find((r) => r.name === "typedState")!;
+      expect(typedState).toBeDefined();
+    });
+
+    it("extracts shallowReactive()", () => {
+      const source = loadFixture("RefsAndComputed.vue");
+      const doc = parseSFC(source, "RefsAndComputed.vue");
+
+      const shallowState = doc.refs!.find((r) => r.name === "shallowState")!;
+      expect(shallowState.type).toBe("Object");
+    });
+
+    it("uses explicit TS annotation when present", () => {
+      const source = loadFixture("RefsAndComputed.vue");
+      const doc = parseSFC(source, "RefsAndComputed.vue");
+
+      const annotated = doc.refs!.find((r) => r.name === "annotated")!;
+      expect(annotated.type).toBe("Ref<string[]>");
+    });
+
+    it("extracts computed() as ComputedRef", () => {
+      const source = loadFixture("RefsAndComputed.vue");
+      const doc = parseSFC(source, "RefsAndComputed.vue");
+
+      const fullName = doc.computeds!.find((c) => c.name === "fullName")!;
+      expect(fullName.type).toBe("ComputedRef");
+      expect(fullName.description).toBe("The full display name");
+      expect(fullName.since).toBe("2.0.0");
+    });
+
+    it("extracts computed<T>() with generic", () => {
+      const source = loadFixture("RefsAndComputed.vue");
+      const doc = parseSFC(source, "RefsAndComputed.vue");
+
+      const total = doc.computeds!.find((c) => c.name === "total")!;
+      expect(total.type).toBe("ComputedRef<number>");
+      expect(total.deprecated).toBe("Use totalItems instead");
+    });
+
+    it("extracts computed with getter return type annotation", () => {
+      const source = loadFixture("RefsAndComputed.vue");
+      const doc = parseSFC(source, "RefsAndComputed.vue");
+
+      const doubled = doc.computeds!.find((c) => c.name === "doubled")!;
+      expect(doubled.type).toBe("ComputedRef<number>");
+    });
+
+    it("infers literal types from ref arguments", () => {
+      const source = loadFixture("RefsAndComputed.vue");
+      const doc = parseSFC(source, "RefsAndComputed.vue");
+
+      const flag = doc.refs!.find((r) => r.name === "flag")!;
+      expect(flag.type).toBe("Ref<boolean>");
+
+      const items = doc.refs!.find((r) => r.name === "items")!;
+      expect(items.type).toBe("Ref<Array>");
+
+      const config = doc.refs!.find((r) => r.name === "config")!;
+      expect(config.type).toBe("Ref<Object>");
+
+      const empty = doc.refs!.find((r) => r.name === "empty")!;
+      expect(empty.type).toBe("Ref<null>");
+    });
+
+    it("does not extract use*() calls as refs", () => {
+      const source = `<template><div /></template>
+<script setup lang="ts">
+import { ref, computed } from "vue";
+import { useRouter } from "vue-router";
+const router = useRouter();
+const count = ref(0);
+</script>`;
+      const doc = parseSFC(source, "Test.vue");
+
+      expect(doc.refs).toHaveLength(1);
+      expect(doc.refs![0]!.name).toBe("count");
+    });
+
+    it("returns undefined refs/computeds for components without them", () => {
+      const source = loadFixture("BasicProps.vue");
+      const doc = parseSFC(source, "BasicProps.vue");
+
+      expect(doc.refs).toBeUndefined();
+      expect(doc.computeds).toBeUndefined();
+    });
+  });
+
+  // --- v0.4.0: Options API data() and computed extraction ---
+
+  describe("Options API data and computed", () => {
+    it("extracts data() returned properties", () => {
+      const source = loadFixture("OptionsApiData.vue");
+      const doc = parseSFC(source, "OptionsApiData.vue");
+
+      expect(doc.refs).toBeDefined();
+      expect(doc.refs!.length).toBeGreaterThanOrEqual(5);
+
+      const message = doc.refs!.find((r) => r.name === "message")!;
+      expect(message.type).toBe("string");
+      expect(message.description).toBe("The greeting message");
+
+      const count = doc.refs!.find((r) => r.name === "count")!;
+      expect(count.type).toBe("number");
+
+      const isActive = doc.refs!.find((r) => r.name === "isActive")!;
+      expect(isActive.type).toBe("boolean");
+
+      const items = doc.refs!.find((r) => r.name === "items")!;
+      expect(items.type).toBe("Array");
+
+      const config = doc.refs!.find((r) => r.name === "config")!;
+      expect(config.type).toBe("Object");
+
+      const empty = doc.refs!.find((r) => r.name === "empty")!;
+      expect(empty.type).toBe("null");
+    });
+
+    it("extracts computed getter methods", () => {
+      const source = loadFixture("OptionsApiData.vue");
+      const doc = parseSFC(source, "OptionsApiData.vue");
+
+      expect(doc.computeds).toBeDefined();
+      expect(doc.computeds!.length).toBeGreaterThanOrEqual(2);
+
+      const fullName = doc.computeds!.find((c) => c.name === "fullName")!;
+      expect(fullName).toBeDefined();
+      expect(fullName.description).toBe("The full display name");
+      expect(fullName.since).toBe("1.0.0");
+
+      const itemCount = doc.computeds!.find((c) => c.name === "itemCount")!;
+      expect(itemCount).toBeDefined();
+      expect(itemCount.deprecated).toBe("Use totalItems instead");
+    });
+
+    it("extracts computed with get/set object syntax", () => {
+      const source = loadFixture("OptionsApiData.vue");
+      const doc = parseSFC(source, "OptionsApiData.vue");
+
+      const selectedItem = doc.computeds!.find((c) => c.name === "selectedItem")!;
+      expect(selectedItem).toBeDefined();
+      expect(selectedItem.type).toBe("unknown");
     });
   });
 });

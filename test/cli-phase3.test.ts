@@ -165,4 +165,67 @@ defineProps<{ label: string }>();
     expect(existsSync(join(outDir, "Widget.md"))).toBe(true);
     expect(existsSync(join(outDir, "Widget-2.md"))).toBe(true);
   });
+
+  it("summary line includes ignored files in skipped count", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    const { stdout } = tryRun(
+      `${resolve(projectDir, "src/components")} --out ${tmpDir} --ignore "**/Dialog*"`,
+    );
+    // Dialog matches the ignore pattern, InternalWidget is @internal
+    // Both should be counted as skipped
+    const match = stdout.match(/(\d+) skipped/);
+    expect(match).toBeTruthy();
+    const skippedCount = parseInt(match![1]!, 10);
+    expect(skippedCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("--preserve-structure mirrors folder tree in output", () => {
+    // Create temp structure with nested dirs
+    const srcDir = join(tmpDir, "src");
+    const compDir = join(srcDir, "components");
+    const viewDir = join(srcDir, "views");
+    mkdirSync(compDir, { recursive: true });
+    mkdirSync(viewDir, { recursive: true });
+
+    const vueContent = `<template><div /></template>
+<script setup lang="ts">
+defineProps<{ label: string }>();
+</script>`;
+
+    writeFileSync(join(compDir, "Button.vue"), vueContent, "utf-8");
+    writeFileSync(join(viewDir, "Home.vue"), vueContent, "utf-8");
+
+    const outDir = join(tmpDir, "out");
+    mkdirSync(outDir, { recursive: true });
+
+    const { status } = tryRun(`${srcDir} --out ${outDir} --preserve-structure`);
+    expect(status).toBe(0);
+    expect(existsSync(join(outDir, "components", "Button.md"))).toBe(true);
+    expect(existsSync(join(outDir, "views", "Home.md"))).toBe(true);
+  });
+
+  it("default flat behavior unchanged without --preserve-structure", () => {
+    const srcDir = join(tmpDir, "src");
+    const compDir = join(srcDir, "components");
+    const viewDir = join(srcDir, "views");
+    mkdirSync(compDir, { recursive: true });
+    mkdirSync(viewDir, { recursive: true });
+
+    const vueContent = `<template><div /></template>
+<script setup lang="ts">
+defineProps<{ label: string }>();
+</script>`;
+
+    writeFileSync(join(compDir, "Alert.vue"), vueContent, "utf-8");
+    writeFileSync(join(viewDir, "Dashboard.vue"), vueContent, "utf-8");
+
+    const outDir = join(tmpDir, "out");
+    mkdirSync(outDir, { recursive: true });
+
+    const { status } = tryRun(`${srcDir} --out ${outDir}`);
+    expect(status).toBe(0);
+    // Without --preserve-structure, both should be flat in outDir
+    expect(existsSync(join(outDir, "Alert.md"))).toBe(true);
+    expect(existsSync(join(outDir, "Dashboard.md"))).toBe(true);
+  });
 });

@@ -1,5 +1,5 @@
 import { writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import type { ComponentDoc } from "./types.ts";
 import { generateMarkdown, adjustHeadingLevel } from "./markdown.ts";
 
@@ -7,21 +7,35 @@ export function writeIndividualMarkdown(
   results: Array<{ path: string; doc: ComponentDoc }>,
   outDir: string,
   silent: boolean,
-): void {
+  options?: { preserveStructure?: boolean; basePath?: string },
+): Map<string, string> {
   mkdirSync(outDir, { recursive: true });
+  const outputMap = new Map<string, string>();
   const usedNames = new Map<string, number>();
 
-  for (const { doc } of results) {
+  for (const { path: sourcePath, doc } of results) {
+    let targetDir = outDir;
+
+    if (options?.preserveStructure && options.basePath) {
+      const relDir = relative(options.basePath, dirname(sourcePath));
+      targetDir = join(outDir, relDir);
+      mkdirSync(targetDir, { recursive: true });
+    }
+
     const baseName = doc.name;
-    const count = usedNames.get(baseName) ?? 0;
-    usedNames.set(baseName, count + 1);
+    const dedupKey = options?.preserveStructure ? `${targetDir}/${baseName}` : baseName;
+    const count = usedNames.get(dedupKey) ?? 0;
+    usedNames.set(dedupKey, count + 1);
     const fileName = count === 0 ? baseName : `${baseName}-${count + 1}`;
 
     const md = generateMarkdown(doc);
-    const outPath = join(outDir, `${fileName}.md`);
+    const outPath = join(targetDir, `${fileName}.md`);
     writeFileSync(outPath, md, "utf-8");
+    outputMap.set(sourcePath, outPath);
     if (!silent) console.log(`  Created ${fileName}.md`);
   }
+
+  return outputMap;
 }
 
 export function writeJoinedMarkdown(
@@ -65,8 +79,10 @@ export function writeJSON(
   outDir: string,
   joined: boolean,
   silent: boolean,
-): void {
+  options?: { preserveStructure?: boolean; basePath?: string },
+): Map<string, string> {
   mkdirSync(outDir, { recursive: true });
+  const outputMap = new Map<string, string>();
 
   if (joined) {
     const data = {
@@ -79,15 +95,27 @@ export function writeJSON(
   } else {
     const usedNames = new Map<string, number>();
 
-    for (const { doc } of results) {
+    for (const { path: sourcePath, doc } of results) {
+      let targetDir = outDir;
+
+      if (options?.preserveStructure && options.basePath) {
+        const relDir = relative(options.basePath, dirname(sourcePath));
+        targetDir = join(outDir, relDir);
+        mkdirSync(targetDir, { recursive: true });
+      }
+
       const baseName = doc.name;
-      const count = usedNames.get(baseName) ?? 0;
-      usedNames.set(baseName, count + 1);
+      const dedupKey = options?.preserveStructure ? `${targetDir}/${baseName}` : baseName;
+      const count = usedNames.get(dedupKey) ?? 0;
+      usedNames.set(dedupKey, count + 1);
       const fileName = count === 0 ? baseName : `${baseName}-${count + 1}`;
 
-      const outPath = join(outDir, `${fileName}.json`);
+      const outPath = join(targetDir, `${fileName}.json`);
       writeFileSync(outPath, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+      outputMap.set(sourcePath, outPath);
       if (!silent) console.log(`  Created ${fileName}.json`);
     }
   }
+
+  return outputMap;
 }

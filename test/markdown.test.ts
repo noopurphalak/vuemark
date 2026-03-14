@@ -417,4 +417,114 @@ describe("generateMarkdown", () => {
     const md = generateMarkdown(doc);
     expect(md).toContain("See: https://example.com");
   });
+
+  // --- v0.4.0: Refs and Computed markdown ---
+
+  it("renders Refs table with Name/Type/Description", () => {
+    const doc: ComponentDoc = {
+      name: "Counter",
+      props: [],
+      emits: [],
+      refs: [
+        { name: "count", type: "Ref<number>", description: "The counter value" },
+        { name: "name", type: "Ref<string>", description: "" },
+      ],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("## Refs");
+    expect(md).toContain("| Name | Type | Description |");
+    expect(md).toContain("| count | Ref&lt;number&gt; | The counter value |");
+    expect(md).toContain("| name | Ref&lt;string&gt; | - |");
+  });
+
+  it("renders Computed table", () => {
+    const doc: ComponentDoc = {
+      name: "UserCard",
+      props: [],
+      emits: [],
+      computeds: [
+        { name: "fullName", type: "ComputedRef<string>", description: "The full display name" },
+      ],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("## Computed");
+    expect(md).toContain("| fullName | ComputedRef&lt;string&gt; | The full display name |");
+  });
+
+  it("HTML escapes type generics in refs and computed", () => {
+    const doc: ComponentDoc = {
+      name: "Test",
+      props: [],
+      emits: [],
+      refs: [{ name: "items", type: "Ref<Array<string>>", description: "-" }],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("Ref&lt;Array&lt;string&gt;&gt;");
+  });
+
+  it("renders @deprecated/@since annotations on refs", () => {
+    const doc: ComponentDoc = {
+      name: "Test",
+      props: [],
+      emits: [],
+      refs: [
+        {
+          name: "data",
+          type: "Ref",
+          description: "Old data",
+          deprecated: "Use newData",
+          since: "1.0.0",
+        },
+      ],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("**Deprecated**: Use newData");
+    expect(md).toContain("*(since 1.0.0)*");
+  });
+
+  it("omits Refs and Computed sections when empty", () => {
+    const doc: ComponentDoc = {
+      name: "Simple",
+      props: [{ name: "x", type: "string", required: true, default: undefined, description: "" }],
+      emits: [],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).not.toContain("## Refs");
+    expect(md).not.toContain("## Computed");
+  });
+
+  it("renders sections in order: Refs → Computed → Props", () => {
+    const doc: ComponentDoc = {
+      name: "Full",
+      props: [{ name: "x", type: "string", required: true, default: undefined, description: "" }],
+      emits: [],
+      refs: [{ name: "count", type: "Ref<number>", description: "" }],
+      computeds: [{ name: "total", type: "ComputedRef", description: "" }],
+    };
+
+    const md = generateMarkdown(doc);
+    const refsIdx = md.indexOf("## Refs");
+    const computedIdx = md.indexOf("## Computed");
+    const propsIdx = md.indexOf("## Props");
+    expect(refsIdx).toBeLessThan(computedIdx);
+    expect(computedIdx).toBeLessThan(propsIdx);
+  });
+
+  it("shows no documentable API when only refs/computed exist is false", () => {
+    const doc: ComponentDoc = {
+      name: "StateOnly",
+      props: [],
+      emits: [],
+      refs: [{ name: "count", type: "Ref<number>", description: "" }],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).not.toContain("No documentable API found.");
+    expect(md).toContain("## Refs");
+  });
 });

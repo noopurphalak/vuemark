@@ -39,6 +39,26 @@ export interface ComposableDoc {
   variables: ComposableVariable[];
 }
 
+export interface RefDoc {
+  name: string;
+  type: string;
+  description: string;
+  deprecated?: string | boolean;
+  since?: string;
+  example?: string;
+  see?: string;
+}
+
+export interface ComputedDoc {
+  name: string;
+  type: string;
+  description: string;
+  deprecated?: string | boolean;
+  since?: string;
+  example?: string;
+  see?: string;
+}
+
 export interface ComponentDoc {
   name: string;
   description?: string;
@@ -49,6 +69,8 @@ export interface ComponentDoc {
   slots?: SlotDoc[];
   exposes?: ExposeDoc[];
   composables?: ComposableDoc[];
+  refs?: RefDoc[];
+  computeds?: ComputedDoc[];
 }
 
 export type OutputFormat = "md" | "json";
@@ -59,4 +81,10 @@ export interface RunSummary {
   errors: number;
   files: Array<{ path: string; doc: ComponentDoc }>;
   errorDetails: Array<{ path: string; error: string }>;
+}
+
+export interface DiscoveryResult {
+  files: string[];
+  ignoredCount: number;
+  basePath: string;
 }

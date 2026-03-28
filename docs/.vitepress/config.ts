@@ -1,7 +1,7 @@
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
-  title: "compmark",
+  title: "Compmark Vue",
   description: "Auto-generate Markdown documentation from Vue 3 SFCs",
   base: "/compmark-vue/",
   cleanUrls: true,

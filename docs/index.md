@@ -1,12 +1,12 @@
 ---
 layout: home
 hero:
-  name: compmark
+  name: Compmark Vue
   text: Vue Component Documentation Generator
   image:
     src: /logo.svg
     alt: compmark logo
-  tagline: Documentation that writes itself
+  tagline: From Vue components to Markdown in seconds
   actions:
     - theme: brand
       text: Get Started

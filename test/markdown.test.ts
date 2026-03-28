@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { generateMarkdown } from "../src/markdown.ts";
 import type { ComponentDoc } from "../src/types.ts";
 
@@ -146,7 +146,7 @@ describe("generateMarkdown", () => {
     };
 
     const md = generateMarkdown(doc);
-    expect(md).toContain("**Deprecated**: Use text instead");
+    expect(md).toContain("**⚠️ Deprecated**: Use text instead");
   });
 
   it("renders deprecated prop without reason", () => {
@@ -166,8 +166,8 @@ describe("generateMarkdown", () => {
     };
 
     const md = generateMarkdown(doc);
-    expect(md).toContain("**Deprecated**");
-    expect(md).not.toContain("**Deprecated**:");
+    expect(md).toContain("**⚠️ Deprecated**");
+    expect(md).not.toContain("**⚠️ Deprecated**:");
   });
 
   it("renders @since annotation", () => {
@@ -482,7 +482,7 @@ describe("generateMarkdown", () => {
     };
 
     const md = generateMarkdown(doc);
-    expect(md).toContain("**Deprecated**: Use newData");
+    expect(md).toContain("**⚠️ Deprecated**: Use newData");
     expect(md).toContain("*(since 1.0.0)*");
   });
 
@@ -526,5 +526,172 @@ describe("generateMarkdown", () => {
     const md = generateMarkdown(doc);
     expect(md).not.toContain("No documentable API found.");
     expect(md).toContain("## Refs");
+  });
+
+  // --- Phase 5: Deprecation badges, version, section ordering ---
+
+  it("renders component-level deprecation badge without reason", () => {
+    const doc: ComponentDoc = {
+      name: "OldButton",
+      deprecated: true,
+      props: [
+        { name: "x", type: "string", required: false, default: undefined, description: "" },
+      ],
+      emits: [],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("# OldButton ⚠️ Deprecated");
+    expect(md).toContain("> **⚠️ Deprecated**");
+  });
+
+  it("renders component-level deprecation badge with reason", () => {
+    const doc: ComponentDoc = {
+      name: "OldButton",
+      deprecated: "Use NewButton instead",
+      props: [
+        { name: "x", type: "string", required: false, default: undefined, description: "" },
+      ],
+      emits: [],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("# OldButton ⚠️ Deprecated");
+    expect(md).toContain("> **⚠️ Deprecated**: Use NewButton instead");
+  });
+
+  it("renders version badge", () => {
+    const doc: ComponentDoc = {
+      name: "Button",
+      version: "2.1.0",
+      props: [
+        { name: "x", type: "string", required: false, default: undefined, description: "" },
+      ],
+      emits: [],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("**Version:** 2.1.0");
+  });
+
+  it("renders only specified sections via sectionOrder", () => {
+    const doc: ComponentDoc = {
+      name: "Test",
+      props: [
+        { name: "x", type: "string", required: false, default: undefined, description: "" },
+      ],
+      emits: [{ name: "click", description: "" }],
+      refs: [{ name: "count", type: "Ref<number>", description: "" }],
+    };
+
+    const md = generateMarkdown(doc, { sectionOrder: ["props", "emits"] });
+    expect(md).toContain("## Props");
+    expect(md).toContain("## Emits");
+    expect(md).not.toContain("## Refs");
+  });
+
+  it("respects custom section ordering", () => {
+    const doc: ComponentDoc = {
+      name: "Test",
+      props: [
+        { name: "x", type: "string", required: false, default: undefined, description: "" },
+      ],
+      emits: [{ name: "click", description: "" }],
+    };
+
+    const md = generateMarkdown(doc, { sectionOrder: ["emits", "props"] });
+    const emitsIdx = md.indexOf("## Emits");
+    const propsIdx = md.indexOf("## Props");
+    expect(emitsIdx).toBeLessThan(propsIdx);
+  });
+
+  it("default section order has Refs before Props", () => {
+    const doc: ComponentDoc = {
+      name: "Test",
+      props: [
+        { name: "x", type: "string", required: false, default: undefined, description: "" },
+      ],
+      emits: [],
+      refs: [{ name: "count", type: "Ref<number>", description: "" }],
+    };
+
+    const md = generateMarkdown(doc);
+    const refsIdx = md.indexOf("## Refs");
+    const propsIdx = md.indexOf("## Props");
+    expect(refsIdx).toBeLessThan(propsIdx);
+  });
+
+  it("renders component with both deprecated and version", () => {
+    const doc: ComponentDoc = {
+      name: "Legacy",
+      deprecated: "Removed in v3",
+      version: "1.5.0",
+      description: "A legacy component.",
+      props: [
+        { name: "x", type: "string", required: false, default: undefined, description: "" },
+      ],
+      emits: [],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).toContain("# Legacy ⚠️ Deprecated");
+    expect(md).toContain("> **⚠️ Deprecated**: Removed in v3");
+    expect(md).toContain("A legacy component.");
+    expect(md).toContain("**Version:** 1.5.0");
+  });
+
+  it("shows 'No documentable API found' when sectionOrder excludes all populated sections", () => {
+    const doc: ComponentDoc = {
+      name: "Button",
+      props: [],
+      emits: [{ name: "click", description: "Emitted when clicked" }],
+    };
+
+    const md = generateMarkdown(doc, { sectionOrder: ["props"] });
+    expect(md).toContain("No documentable API found.");
+  });
+
+  it("warns on all-invalid sectionOrder keys and shows 'No documentable API found'", () => {
+    const doc: ComponentDoc = {
+      name: "Button",
+      props: [{ name: "label", type: "string", required: true, default: undefined, description: "Label" }],
+      emits: [],
+    };
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const md = generateMarkdown(doc, { sectionOrder: ["prop" as unknown as "props"] });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"prop"'));
+    warnSpy.mockRestore();
+
+    expect(md).toContain("No documentable API found.");
+  });
+
+  it("warns on unknown sectionOrder keys and skips them", () => {
+    const doc: ComponentDoc = {
+      name: "Button",
+      props: [{ name: "label", type: "string", required: true, default: undefined, description: "Label" }],
+      emits: [],
+    };
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    generateMarkdown(doc, { sectionOrder: ["prop" as unknown as "props", "props"] });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"prop"'));
+    warnSpy.mockRestore();
+  });
+
+  it("category in component doc does not affect individual markdown output", () => {
+    const doc: ComponentDoc = {
+      name: "TextInput",
+      category: "Forms",
+      props: [
+        { name: "value", type: "string", required: true, default: undefined, description: "The input value" },
+      ],
+      emits: [],
+    };
+
+    const md = generateMarkdown(doc);
+    expect(md).not.toContain("Forms");
+    expect(md).toContain("# TextInput");
+    expect(md).toContain("## Props");
   });
 });

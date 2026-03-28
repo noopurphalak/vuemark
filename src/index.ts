@@ -15,12 +15,16 @@ export type {
   OutputFormat,
   RunSummary,
   DiscoveryResult,
+  CompmarkConfig,
+  SectionKey,
 } from "./types.ts";
+export { DEFAULT_SECTION_ORDER } from "./types.ts";
 export { parseSFC } from "./parser.ts";
 export { generateMarkdown, adjustHeadingLevel } from "./markdown.ts";
 export { discoverFiles } from "./discovery.ts";
 export { processFiles } from "./runner.ts";
 export { resolveImportedPropsType } from "./type-resolver.ts";
+export { loadCompmarkConfig, mergeWithCLIFlags, resolveAliases } from "./config.ts";
 
 export function parseComponent(filePath: string) {
   const abs = resolve(filePath);

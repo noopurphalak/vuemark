@@ -974,4 +974,146 @@ const count = ref(0);
       expect(selectedItem.type).toBe("unknown");
     });
   });
+
+  // --- Phase 5: @category, @version, component-level @deprecated ---
+
+  describe("component-level JSDoc tags", () => {
+    it("extracts @category from component JSDoc", () => {
+      const source = `<script setup>
+/**
+ * A form input component.
+ * @category Forms
+ */
+import { ref } from 'vue'
+const value = ref('')
+</script>`;
+      const doc = parseSFC(source, "CategoryInput.vue");
+      expect(doc.category).toBe("Forms");
+    });
+
+    it("extracts @category with multi-word value", () => {
+      const source = `<script setup>
+/**
+ * @category Form Controls
+ */
+import { ref } from 'vue'
+</script>`;
+      const doc = parseSFC(source, "MultiCategory.vue");
+      expect(doc.category).toBe("Form Controls");
+    });
+
+    it("extracts @version from component JSDoc", () => {
+      const source = `<script setup>
+/**
+ * A button component.
+ * @version 2.1.0
+ */
+import { ref } from 'vue'
+</script>`;
+      const doc = parseSFC(source, "VersionedButton.vue");
+      expect(doc.version).toBe("2.1.0");
+    });
+
+    it("extracts component-level @deprecated without reason", () => {
+      const source = `<script setup>
+/**
+ * Old button.
+ * @deprecated
+ */
+import { ref } from 'vue'
+</script>`;
+      const doc = parseSFC(source, "DeprecatedButton.vue");
+      expect(doc.deprecated).toBeTruthy();
+    });
+
+    it("extracts component-level @deprecated with reason", () => {
+      const source = `<script setup>
+/**
+ * Old button.
+ * @deprecated Use NewButton instead
+ */
+import { ref } from 'vue'
+</script>`;
+      const doc = parseSFC(source, "DeprecatedButton.vue");
+      expect(doc.deprecated).toBe("Use NewButton instead");
+    });
+
+    it("extracts all component-level tags together", () => {
+      const source = `<script setup>
+/**
+ * A legacy input.
+ * @category Forms
+ * @version 1.0.0
+ * @deprecated Use TextFieldV2 instead
+ */
+import { ref } from 'vue'
+</script>`;
+      const doc = parseSFC(source, "LegacyInput.vue");
+      expect(doc.category).toBe("Forms");
+      expect(doc.version).toBe("1.0.0");
+      expect(doc.deprecated).toBe("Use TextFieldV2 instead");
+      expect(doc.description).toBe("A legacy input.");
+    });
+
+    it("handles empty @category gracefully", () => {
+      const source = `<script setup>
+/**
+ * Test.
+ * @category
+ */
+import { ref } from 'vue'
+</script>`;
+      const doc = parseSFC(source, "EmptyCategory.vue");
+      // Empty string or undefined - both acceptable
+      expect(doc.category === "" || doc.category === undefined).toBe(true);
+    });
+
+    it("does not extract @category from non-component JSDoc", () => {
+      const source = `<script setup>
+/**
+ * This is a local variable
+ * @category Internal
+ */
+const count = 5
+</script>`;
+      const doc = parseSFC(source, "NonComponent.vue");
+      // Variable declarations don't count as component-level JSDoc
+      expect(doc.category).toBeUndefined();
+    });
+  });
+
+  describe("edge cases", () => {
+    it("handles empty script setup", () => {
+      const source = `<script setup>
+</script>
+<template><div>Hello</div></template>`;
+      const doc = parseSFC(source, "Empty.vue");
+      expect(doc.name).toBe("Empty");
+      expect(doc.props).toEqual([]);
+      expect(doc.emits).toEqual([]);
+    });
+
+    it("handles template-only component with slots", () => {
+      const source = `<template>
+  <div>
+    <slot name="header"></slot>
+    <slot></slot>
+  </div>
+</template>`;
+      const doc = parseSFC(source, "TemplateOnly.vue");
+      expect(doc.name).toBe("TemplateOnly");
+      expect(doc.slots).toBeDefined();
+      expect(doc.slots!.length).toBe(2);
+    });
+
+    it("handles component with only emits", () => {
+      const source = `<script setup>
+const emit = defineEmits(['click', 'hover'])
+</script>`;
+      const doc = parseSFC(source, "EmitsOnly.vue");
+      expect(doc.props).toEqual([]);
+      expect(doc.emits).toHaveLength(2);
+      expect(doc.emits[0]!.name).toBe("click");
+    });
+  });
 });

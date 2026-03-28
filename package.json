@@ -1,6 +1,6 @@
 {
   "name": "compmark-vue",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Auto-generate Markdown documentation from Vue 3 SFCs",
   "keywords": [
     "compmark",
@@ -38,11 +38,16 @@
     "release": "pnpm test && pnpm build && changelogen --release && npm publish && git push --follow-tags",
     "test": "pnpm lint && pnpm typecheck && vitest run --coverage",
     "typecheck": "tsgo --noEmit --skipLibCheck",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
     "prepare": "husky"
   },
   "dependencies": {
     "@vue/compiler-sfc": "^3.5.0",
+    "c12": "4.0.0-beta.4",
     "citty": "^0.2.1",
+    "defu": "^6.1.4",
     "tinyglobby": "^0.2.15"
   },
   "devDependencies": {
@@ -58,6 +63,7 @@
     "oxfmt": "latest",
     "oxlint": "latest",
     "typescript": "latest",
+    "vitepress": "^1.6.4",
     "vitest": "latest"
   },
   "lint-staged": {

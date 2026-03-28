@@ -7,7 +7,9 @@
 
 <!-- /automd -->
 
-Auto-generate Markdown documentation from Vue 3 SFCs. Zero configuration required.
+Auto-generate Markdown documentation from Vue 3 SFCs. Zero configuration required — or use a config file for full control.
+
+[**Documentation**](https://noopurphalak.github.io/compmark-vue/)
 
 ## Quick Start
 
@@ -63,6 +65,7 @@ compmark <files/dirs/globs> [options]
 | `--preserve-structure` | Mirror input folder tree in output |         |
 | `--watch`              | Watch for changes and rebuild      |         |
 | `--silent`             | Suppress non-error output          |         |
+| `--config <path>`      | Path to config file                |         |
 
 ### Examples
 
@@ -125,11 +128,15 @@ In watch mode, individual file changes are processed incrementally — only the 
 - [Slots](#slots) — `defineSlots` with typed bindings, template `<slot>` fallback
 - [Expose](#expose) — `defineExpose` with JSDoc descriptions
 - [Composables](#composables) — auto-detects `useX()` calls in `<script setup>`
-- [JSDoc tags](#jsdoc-tags) — `@deprecated`, `@since`, `@example`, `@see`, `@default`
+- [JSDoc tags](#jsdoc-tags) — `@deprecated`, `@since`, `@example`, `@see`, `@default`, `@category`, `@version`
 - [`@internal`](#internal-components) — exclude components from output
 - [Options API](#options-api) — `export default { props, emits, data(), computed }` support
 - [Output formats](#output-formats) — Markdown (individual or joined), JSON
 - [Preserve structure](#preserve-structure) — mirror input folder tree in `--out`
+- [Config file](#config-file) — `compmark.config.ts` with all options
+- [Category grouping](#category-grouping) — group components in joined output
+- [Section ordering](#section-ordering) — customize section order in markdown
+- [Path aliases](#path-aliases) — auto-read `tsconfig.json` + config overrides
 - Empty sections are skipped cleanly — no placeholder noise
 
 ## Examples
@@ -562,6 +569,36 @@ Output:
 ```
 ````
 
+#### Component-level Tags
+
+`@category`, `@version`, and `@deprecated` can be used on the component JSDoc:
+
+```vue
+<script setup lang="ts">
+/**
+ * A text input with validation.
+ * @category Forms
+ * @version 2.1.0
+ * @deprecated Use TextFieldV2 instead
+ */
+import { ref } from 'vue'
+</script>
+```
+
+Output:
+
+```md
+# TextInput ⚠️ Deprecated
+
+> **⚠️ Deprecated**: Use TextFieldV2 instead
+
+A text input with validation.
+
+**Version:** 2.1.0
+```
+
+`@category` is used for grouping in [joined output](#category-grouping). `@version` adds a version badge. `@deprecated` adds a visual warning badge to the heading.
+
 ### Internal Components
 
 Mark a component with `@internal` to skip it during generation:
@@ -702,6 +739,67 @@ src/views/Home.vue         → docs/api/views/Home.md
 Without `--preserve-structure`, components with the same name in different directories get a numeric suffix (`Button.md`, `Button-2.md`). With `--preserve-structure`, they live in separate subdirectories.
 
 `--join` mode ignores `--preserve-structure` (single output file).
+
+### Config File
+
+Create `compmark.config.ts` in your project root:
+
+```ts
+export default {
+  include: ['src/components/**/*.vue'],
+  exclude: ['**/*.test.vue'],
+  outDir: 'docs/api',
+  format: 'md',
+  aliases: { '@': './src' },
+  sectionOrder: ['props', 'emits', 'slots', 'refs', 'computed', 'exposed', 'composables'],
+}
+```
+
+Then run `compmark` with no arguments — the config provides everything.
+
+Config files are auto-discovered as `compmark.config.{ts,js,mjs,cjs,json}` or `.compmarkrc`. Use `--config <path>` to point to a specific file. CLI flags override config values.
+
+### Category Grouping
+
+Use `@category` to group components in `--join` output:
+
+```vue
+<script setup lang="ts">
+/** @category Forms */
+import { ref } from 'vue'
+defineProps<{ label: string }>()
+</script>
+```
+
+When using `--join`, components are grouped under category headings with a two-level table of contents. Components without a category appear first. Within each category, components are sorted alphabetically.
+
+### Section Ordering
+
+The `sectionOrder` config option controls which sections appear and in what order:
+
+```ts
+export default {
+  // Only show props and emits, hide everything else
+  sectionOrder: ['props', 'emits'],
+}
+```
+
+Available keys: `refs`, `computed`, `props`, `emits`, `slots`, `exposed`, `composables`.
+
+### Path Aliases
+
+compmark automatically reads `tsconfig.json` (or `jsconfig.json`) `compilerOptions.paths` for import resolution. You can augment or override these with `config.aliases`:
+
+```ts
+export default {
+  aliases: {
+    '@': './src',           // overrides tsconfig @/* path
+    '#utils': './lib/utils' // additional alias
+  },
+}
+```
+
+Config aliases take precedence over tsconfig paths on conflict.
 
 ## Programmatic API
 

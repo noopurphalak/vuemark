@@ -8,24 +8,26 @@ Auto-generate Markdown documentation from Vue 3 SFCs.
 
 ## Status
 
-- **Version:** 0.4.0
-- **Tests:** 140 passing (parser: 69, markdown: 29, CLI: 9, CLI-phase3: 16, discovery: 12, type-resolver: 5)
+- **Version:** 0.5.0
+- **Tests:** 184 passing (parser: 80, markdown: 40, CLI: 9, CLI-phase3: 16, discovery: 12, type-resolver: 5, config: 15, output: 7)
 
 ## Architecture
 
 ```
 src/
-  types.ts          — PropDoc, EmitDoc, SlotDoc, ExposeDoc, ComposableDoc, ComposableVariable, RefDoc, ComputedDoc, ComponentDoc, OutputFormat, RunSummary, DiscoveryResult interfaces
-  parser.ts         — SFC parsing + AST extraction (core logic); ref/computed extraction, Options API data()/computed support
+  types.ts          — PropDoc, EmitDoc, SlotDoc, ExposeDoc, ComposableDoc, ComposableVariable, RefDoc, ComputedDoc, ComponentDoc, CompmarkConfig, SectionKey, OutputFormat, RunSummary, DiscoveryResult interfaces
+  parser.ts         — SFC parsing + AST extraction (core logic); ref/computed extraction, Options API data()/computed support; @category, @version, component-level @deprecated
   resolver.ts       — Cross-file import resolution + composable source type inference
   type-resolver.ts  — Resolve defineProps<ImportedType>() across files
-  markdown.ts       — Markdown table generation (refs, computed, props, emits, slots, exposed, composables) + adjustHeadingLevel
+  config.ts         — Config file loading (c12), CLI flag merging (defu), tsconfig alias resolution
+  markdown.ts       — Markdown table generation with configurable sectionOrder, deprecation badges (⚠️), version badges + adjustHeadingLevel
   discovery.ts      — File discovery (single file, directory, glob → absolute paths via tinyglobby); returns DiscoveryResult with ignoredCount and basePath
   runner.ts         — Multi-file processing loop, error collection
-  output.ts         — Output modes (individual md, joined md, JSON); supports preserveStructure option and returns Map<source, output> paths
+  output.ts         — Output modes (individual md, joined md with category grouping, JSON); supports preserveStructure and sectionOrder
   watcher.ts        — Watch mode with fs.watch + debounce; incremental updates in individual mode, stale output cleanup
-  index.ts          — Public library API (re-exports + parseComponent)
-  cli.ts            — CLI entry point (citty-based, orchestrates full pipeline)
+  index.ts          — Public library API (re-exports + parseComponent + config)
+  cli.ts            — CLI entry point (citty-based, orchestrates full pipeline with config file support)
+docs/              — VitePress documentation site (guide, features, examples)
 ```
 
 ## Phase 1 (v0.1.0) — Complete
@@ -99,7 +101,23 @@ src/
 - **Watch mode improvements** (`src/watcher.ts`): incremental updates in individual mode (only re-parse changed files), stale output cleanup when files are deleted or become `@internal`, `WatcherOptions` interface with `incrementalUpdate`/`removeOutput` callbacks
 - **Component-level descriptions** (`src/parser.ts`): JSDoc on first statement (import or define call) is extracted as `doc.description`; `@component` tag for explicit marking when first statement is a variable
 
+## Phase 5 (v0.5.0) — Complete
+
+- **Config file support** (`src/config.ts`): `compmark.config.{ts,js,mjs,cjs,json}` via c12; `--config` flag for explicit path
+- **Config options**: `include`, `exclude`, `outDir`, `format`, `join`, `preserveStructure`, `aliases`, `sectionOrder`, `silent`, `watch`
+- **CLI flag merging**: CLI flags override config values via defu; config `include` used when no positional args
+- **`@category` JSDoc tag**: groups components in joined output under category headings with two-level TOC
+- **`@version` JSDoc tag**: renders `**Version:** x.y.z` badge in markdown output
+- **Component-level `@deprecated`**: renders `⚠️ Deprecated` in heading + blockquote with reason
+- **Deprecation badges**: all `**Deprecated**` annotations now use `**⚠️ Deprecated**` visual badge
+- **Configurable section ordering**: `sectionOrder` option controls which sections appear and in what order; omitting a section hides it
+- **Auto-read tsconfig.json**: reads `compilerOptions.paths` from project root for alias resolution; `config.aliases` takes precedence
+- **`--config` CLI flag**: point to specific config file location
+- **`--help` / `--version` polish**: `valueHint` on string args, version synced to 0.5.0
+- **Category grouping in joined output**: two-level TOC, alphabetical sorting within categories, uncategorized components first
+- **VitePress documentation site** (`docs/`): getting started, configuration, CLI reference, feature pages, examples
+- **Dependencies**: c12 (config loading), defu (deep merging)
+
 ## Not yet implemented
 
 - `defineModel` (Vue 3.4+)
-- Config file

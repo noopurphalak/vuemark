@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- C — filled ring with gap on right (±40°), outer r=99, inner r=81, round caps -->
+  <path d="M203.8,64.4 A99,99 0 1,0 203.8,191.6 A9,9 0 0,0 190,180.1 A81,81 0 1,1 190,75.9 A9,9 0 0,0 203.8,64.4 Z" fill="#42b883"/>
+
+  <!-- M — stroke-based, round joins, fits inside C inner edge -->
+  <path d="M82,174 L82,82 L128,148 L174,82 L174,174"
+        fill="none" stroke="#4a6a80" stroke-width="18"
+        stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

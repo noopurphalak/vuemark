@@ -30,6 +30,8 @@ interface JSDocResult {
   see?: string;
   defaultOverride?: string;
   internal?: boolean;
+  category?: string;
+  version?: string;
 }
 
 function parseJSDocTags(comments: Array<{ type: string; value: string }>): JSDocResult {
@@ -59,6 +61,10 @@ function parseJSDocTags(comments: Array<{ type: string; value: string }>): JSDoc
         result.defaultOverride = line.replace(/^@default\s*/, "").trim();
       } else if (line.startsWith("@internal")) {
         result.internal = true;
+      } else if (line.startsWith("@category")) {
+        result.category = line.replace(/^@category\s*/, "").trim();
+      } else if (line.startsWith("@version")) {
+        result.version = line.replace(/^@version\s*/, "").trim();
       } else if (!line.startsWith("@")) {
         descLines.push(line);
       }
@@ -123,6 +129,9 @@ export function parseSFC(source: string, filename: string, sfcDir?: string): Com
   const componentJSDoc = extractComponentJSDoc(compiled.scriptSetupAst ?? compiled.scriptAst ?? []);
   doc.description = componentJSDoc.description;
   doc.internal = componentJSDoc.internal;
+  if (componentJSDoc.category) doc.category = componentJSDoc.category;
+  if (componentJSDoc.version) doc.version = componentJSDoc.version;
+  if (componentJSDoc.deprecated !== undefined) doc.deprecated = componentJSDoc.deprecated;
 
   // Process <script setup>
   const setupAst = compiled.scriptSetupAst;
@@ -181,22 +190,37 @@ export function parseSFC(source: string, filename: string, sfcDir?: string): Com
 
 // --- Component-level JSDoc ---
 
-function extractComponentJSDoc(ast: Statement[]): { description: string; internal: boolean } {
-  if (ast.length === 0) return { description: "", internal: false };
+interface ComponentJSDocResult {
+  description: string;
+  internal: boolean;
+  category?: string;
+  version?: string;
+  deprecated?: string | boolean;
+}
+
+function extractComponentJSDoc(ast: Statement[]): ComponentJSDocResult {
+  const empty: ComponentJSDocResult = { description: "", internal: false };
+  if (ast.length === 0) return empty;
 
   const first = ast[0]!;
   const comments = (first.leadingComments ?? []) as Array<{ type: string; value: string }>;
 
-  if (comments.length === 0) return { description: "", internal: false };
+  if (comments.length === 0) return empty;
 
   const firstComment = comments[0]!;
-  if (firstComment.type !== "CommentBlock") return { description: "", internal: false };
+  if (firstComment.type !== "CommentBlock") return empty;
 
   const result = parseJSDocTags([firstComment]);
 
   // Always extract @internal
   if (result.internal) {
-    return { description: result.description, internal: true };
+    return {
+      description: result.description,
+      internal: true,
+      category: result.category,
+      version: result.version,
+      deprecated: result.deprecated,
+    };
   }
 
   // Treat the first comment as component-level if:
@@ -221,10 +245,16 @@ function extractComponentJSDoc(ast: Statement[]): { description: string; interna
   const hasComponentTag = firstComment.value.includes("@component");
 
   if (hasComponentTag || isImport || isDefineCall || isDefineVar) {
-    return { description: result.description, internal: false };
+    return {
+      description: result.description,
+      internal: false,
+      category: result.category,
+      version: result.version,
+      deprecated: result.deprecated,
+    };
   }
 
-  return { description: "", internal: false };
+  return empty;
 }
 
 // --- Define call extraction ---

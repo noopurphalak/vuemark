@@ -71,9 +71,44 @@ export interface ComponentDoc {
   composables?: ComposableDoc[];
   refs?: RefDoc[];
   computeds?: ComputedDoc[];
+  category?: string;
+  version?: string;
+  deprecated?: string | boolean;
 }
 
 export type OutputFormat = "md" | "json";
+
+export type SectionKey =
+  | "refs"
+  | "computed"
+  | "props"
+  | "emits"
+  | "slots"
+  | "exposed"
+  | "composables";
+
+export const DEFAULT_SECTION_ORDER: SectionKey[] = [
+  "refs",
+  "computed",
+  "props",
+  "emits",
+  "slots",
+  "exposed",
+  "composables",
+];
+
+export interface CompmarkConfig {
+  include?: string[];
+  exclude?: string[];
+  outDir?: string;
+  format?: OutputFormat;
+  join?: boolean;
+  preserveStructure?: boolean;
+  aliases?: Record<string, string>;
+  sectionOrder?: SectionKey[];
+  silent?: boolean;
+  watch?: boolean;
+}
 
 export interface RunSummary {
   documented: number;

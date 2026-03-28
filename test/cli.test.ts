@@ -52,7 +52,7 @@ describe("CLI", { timeout: 10_000 }, () => {
   it("exits 1 with usage on missing argument", () => {
     const { stderr, status } = tryRun("");
     expect(status).not.toBe(0);
-    expect(stderr).toContain("Missing required positional argument: PATHS");
+    expect(stderr).toContain("No input files or directories specified");
   });
 
   it("exits 1 on non-.vue file", () => {
